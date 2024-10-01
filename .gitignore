@@ -1,0 +1,6 @@
+# Derived cabal project file.
+*.project.local
+*.project.freeze
+
+# Build Folder
+dist-newstyle
