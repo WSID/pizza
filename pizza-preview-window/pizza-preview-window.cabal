@@ -23,10 +23,12 @@ name:               pizza-preview-window
 version:            0.1.0.0
 
 -- A short (one-line) description of the package.
--- synopsis:
+synopsis: A internal executable to run and preview pizza.
 
 -- A longer description of the package.
--- description:
+description: A internal executable to see how pizza would work.
+  This will launch a window through glfw, showing framebuffer that pizza would
+  render on.
 
 -- The license under which the package is released.
 license:            MIT
@@ -68,7 +70,8 @@ executable pizza-preview-window
     -- other-extensions:
 
     -- Other library packages from which modules are imported.
-    build-depends:    base ^>=4.17.2.1
+    build-depends:    base ^>=4.17.2.1,
+                      GLFW-b
 
     -- Directories containing source files.
     hs-source-dirs:   app
