@@ -71,7 +71,11 @@ executable pizza-preview-window
 
     -- Other library packages from which modules are imported.
     build-depends:    base ^>=4.17.2.1,
-                      GLFW-b
+                      bytestring,
+                      vector,
+                      GLFW-b,
+                      vulkan,
+                      vulkan-utils
 
     -- Directories containing source files.
     hs-source-dirs:   app
