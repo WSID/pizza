@@ -66,6 +66,7 @@ data SwapchainState = SwapchainState {
 data PipelineState = PipelineState {
     pipelineStateVertexShader :: Vk.ShaderModule,
     pipelineStateFragmentShader :: Vk.ShaderModule,
+    pipelineStateDescriptorSetLayout :: Vk.DescriptorSetLayout,
     pipelineStateLayout :: Vk.PipelineLayout,
     pipelineStateRenderPass :: Vk.RenderPass,
     pipelineStatePipeline :: Vk.Pipeline
@@ -85,8 +86,11 @@ data BufferState = BufferState {
 data DrawState = DrawState {
     drawStateCommandPool :: Vk.CommandPool,
     drawStateCommandBuffer :: Vk.CommandBuffer,
+    drawStateDescriptorPool :: Vk.DescriptorPool,
+    drawStateDescriptorSet :: Vk.DescriptorSet,
     drawStateVertexBuffer :: BufferState,
     drawStateIndexBuffer :: BufferState,
+    drawStateUniformBuffer :: BufferState,
     drawStateFence :: Vk.Fence,
     drawStateSemImage :: Vk.Semaphore,
     drawStateSemRender :: Vk.Semaphore
@@ -247,7 +251,25 @@ createPipelineState :: DeviceState -> SurfaceState -> IO PipelineState
 createPipelineState DeviceState {..} SurfaceState {..} = do
     -- PipelineLayout
 
-    let pipelineLayoutCreateInfo = Vk.zero :: Vk.PipelineLayoutCreateInfo
+    let descriptorSetLayoutBindingSize = (Vk.zero :: Vk.DescriptorSetLayoutBinding) {
+        Vk.binding = 0,
+        Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        Vk.descriptorCount = 1,
+        Vk.stageFlags = Vk.SHADER_STAGE_VERTEX_BIT
+    }
+
+    let descriptorSetLayoutCreateInfo = (Vk.zero :: Vk.DescriptorSetLayoutCreateInfo '[]) {
+        Vk.bindings = V.singleton descriptorSetLayoutBindingSize
+    }
+
+    pipelineStateDescriptorSetLayout <- Vk.createDescriptorSetLayout
+        deviceStateDev
+        descriptorSetLayoutCreateInfo
+        Nothing
+
+    let pipelineLayoutCreateInfo = (Vk.zero :: Vk.PipelineLayoutCreateInfo) {
+        Vk.setLayouts = V.singleton pipelineStateDescriptorSetLayout
+    }
 
     pipelineStateLayout <- Vk.createPipelineLayout
         deviceStateDev
@@ -331,8 +353,15 @@ createPipelineState DeviceState {..} SurfaceState {..} = do
             layout (location = 0)
             in vec2 pos;
 
+            layout (binding = 0) uniform Screen {
+                vec2 size;
+            };
+
             void main () {
-                gl_Position = vec4(pos, 0.0, 1.0);
+                // Map (0, 0) ~ screenSize, to (-1, -1) ~ (+1, +1)
+                vec2 normPos = (pos / size * 2) - 1;
+
+                gl_Position = vec4(normPos, 0.0, 1.0);
             }
         |]
     }
@@ -449,6 +478,7 @@ destroyPipelineState DeviceState {..} PipelineState {..} = do
     Vk.destroyShaderModule deviceStateDev pipelineStateVertexShader Nothing
     Vk.destroyRenderPass deviceStateDev pipelineStateRenderPass Nothing
     Vk.destroyPipelineLayout deviceStateDev pipelineStateLayout Nothing
+    Vk.destroyDescriptorSetLayout deviceStateDev pipelineStateDescriptorSetLayout Nothing
 
 
 createFrameState :: DeviceState -> SurfaceState -> PipelineState -> SwapchainState -> Vk.Image -> IO FrameState
@@ -547,8 +577,8 @@ destroyBufferState DeviceState {..} BufferState {..} = do
     Vk.destroyBuffer deviceStateDev bufferStateBuffer Nothing
     Vk.freeMemory deviceStateDev bufferStateMemory Nothing
 
-createDrawState :: DeviceState -> IO DrawState
-createDrawState DeviceState {..} = do
+createDrawState :: DeviceState -> PipelineState -> IO DrawState
+createDrawState DeviceState {..} PipelineState {..} = do
     -- Command pool
     let commandPoolCreateInfo = (Vk.zero :: Vk.CommandPoolCreateInfo) {
         Vk.queueFamilyIndex = deviceStateGQueueFI
@@ -558,6 +588,7 @@ createDrawState DeviceState {..} = do
         deviceStateDev
         commandPoolCreateInfo
         Nothing
+
 
     -- Command Buffer
 
@@ -573,7 +604,39 @@ createDrawState DeviceState {..} = do
 
     let drawStateCommandBuffer = V.head buffers
 
+
+    -- Descriptor Pool
+
+    let descriptorPoolSize = Vk.DescriptorPoolSize Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER 1
+
+    let descriptorSetCreateInfo = (Vk.zero :: Vk.DescriptorPoolCreateInfo '[]) {
+        Vk.maxSets = 1,
+        Vk.poolSizes = V.singleton descriptorPoolSize
+    }
+
+    drawStateDescriptorPool <- Vk.createDescriptorPool
+        deviceStateDev
+        descriptorSetCreateInfo
+        Nothing
+
+
+    -- Descriptor Set
+
+    let descriptorSetAllocInfo = (Vk.zero :: Vk.DescriptorSetAllocateInfo '[]) {
+        Vk.descriptorPool = drawStateDescriptorPool,
+        Vk.setLayouts = V.singleton pipelineStateDescriptorSetLayout
+    }
+
+    descriptorSets <- Vk.allocateDescriptorSets
+        deviceStateDev
+        descriptorSetAllocInfo
+
+    drawStateDescriptorSet <- case V.toList descriptorSets of
+            [v] -> pure v
+            _ -> die "Descriptor Set create failed"
+
     -- Vertex Buffers and Index Buffers
+
     drawStateVertexBuffer <- createBufferState
         DeviceState {..}
         (6 * sizeOf (undefined :: Float))
@@ -587,12 +650,14 @@ createDrawState DeviceState {..} = do
 
     let vertexData = castPtr vertexPtr :: Ptr Float
 
-    pokeElemOff vertexData 0 (0.0)
-    pokeElemOff vertexData 1 (-0.5)
-    pokeElemOff vertexData 2 (0.5)
-    pokeElemOff vertexData 3 (0.2)
-    pokeElemOff vertexData 4 (-0.5)
-    pokeElemOff vertexData 5 (0.5)
+    pokeElemOff vertexData 0 200
+    pokeElemOff vertexData 1 100
+
+    pokeElemOff vertexData 2 300
+    pokeElemOff vertexData 3 250
+
+    pokeElemOff vertexData 4 0
+    pokeElemOff vertexData 5 0
 
     Vk.unmapMemory
         deviceStateDev
@@ -611,9 +676,9 @@ createDrawState DeviceState {..} = do
 
     let indiceData = castPtr indicePtr :: Ptr Word32
 
-    pokeElemOff indiceData 0 (0)
-    pokeElemOff indiceData 1 (1)
-    pokeElemOff indiceData 2 (2)
+    pokeElemOff indiceData 0 0
+    pokeElemOff indiceData 1 1
+    pokeElemOff indiceData 2 2
 
     Vk.unmapMemory
         deviceStateDev
@@ -632,6 +697,51 @@ createDrawState DeviceState {..} = do
     drawStateSemImage <- Vk.createSemaphore deviceStateDev semCreateInfo Nothing
     drawStateSemRender <- Vk.createSemaphore deviceStateDev semCreateInfo Nothing
 
+
+    -- Uniform Buffer
+
+    drawStateUniformBuffer <- createBufferState
+        DeviceState {..}
+        (2 * sizeOf (undefined :: Float)) -- for vec2
+        Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT
+
+    uniformPtr <- Vk.mapMemory
+        deviceStateDev
+        (bufferStateMemory drawStateUniformBuffer)
+        0 (fromIntegral $ bufferStateSize drawStateUniformBuffer)
+        Vk.zero
+
+    let uniformData = castPtr uniformPtr :: Ptr Float
+
+    pokeElemOff uniformData 0 400
+    pokeElemOff uniformData 1 400
+
+    Vk.unmapMemory
+        deviceStateDev
+        (bufferStateMemory drawStateUniformBuffer)
+
+    -- Setup descriptor set
+
+    let writeDescriptorSet = (Vk.zero :: Vk.WriteDescriptorSet '[]) {
+        Vk.dstSet = drawStateDescriptorSet,
+        Vk.dstBinding = 0,
+        Vk.dstArrayElement = 0,
+        Vk.descriptorCount = 1,
+        Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        Vk.bufferInfo = V.singleton (
+            Vk.DescriptorBufferInfo
+                (bufferStateBuffer drawStateUniformBuffer) 0 Vk.WHOLE_SIZE
+        )
+    }
+
+    Vk.updateDescriptorSets
+        deviceStateDev
+        -- Write
+        (V.singleton (Vk.SomeStruct writeDescriptorSet))
+        -- Copy
+        V.empty
+
+
     pure DrawState {..}
 
 destroyDrawState :: DeviceState -> DrawState -> IO ()
@@ -639,8 +749,10 @@ destroyDrawState DeviceState {..} DrawState {..} = do
     Vk.destroySemaphore deviceStateDev drawStateSemRender Nothing
     Vk.destroySemaphore deviceStateDev drawStateSemImage Nothing
     Vk.destroyFence deviceStateDev drawStateFence Nothing
+    destroyBufferState DeviceState {..} drawStateUniformBuffer
     destroyBufferState DeviceState {..} drawStateIndexBuffer
     destroyBufferState DeviceState {..} drawStateVertexBuffer
+    Vk.destroyDescriptorPool deviceStateDev drawStateDescriptorPool Nothing
     Vk.destroyCommandPool deviceStateDev drawStateCommandPool Nothing
 
 draw :: DeviceState -> PipelineState -> DrawState -> SwapchainState -> (Int -> FrameState) -> IO ()
@@ -713,6 +825,13 @@ draw DeviceState {..} PipelineState {..} DrawState {..} SwapchainState {..} getF
                     (V.singleton $ bufferStateBuffer drawStateVertexBuffer)
                     (V.singleton 0)
 
+                Vk.cmdBindDescriptorSets drawStateCommandBuffer
+                    Vk.PIPELINE_BIND_POINT_GRAPHICS
+                    pipelineStateLayout
+                    0
+                    (V.singleton drawStateDescriptorSet)
+                    (V.empty)
+
                 Vk.cmdDrawIndexed drawStateCommandBuffer 3 1 0 0 0
 
     let submitInfo = (Vk.zero :: Vk.SubmitInfo '[]) {
@@ -776,7 +895,7 @@ main = do
     surfaceState <- createSurfaceState devState win
     swapchainState <- createSwapchainState devState surfaceState width height
     pipelineState <- createPipelineState devState surfaceState
-    drawState <- createDrawState devState
+    drawState <- createDrawState devState pipelineState
 
     (_, images) <- Vk.getSwapchainImagesKHR
         (deviceStateDev devState)
@@ -806,5 +925,6 @@ main = do
     destroyDevState devState
 
     GLFW.terminate
+
 
 
