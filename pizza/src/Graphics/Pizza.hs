@@ -36,6 +36,7 @@ import qualified Vulkan.Utils.ShaderQQ.GLSL.Shaderc as Vku
 -- VulkanMemoryAllocator
 import qualified VulkanMemoryAllocator as Vma
 
+
 data Context = Context {
     -- Note: I may separate this as two.
     --     - Device
@@ -83,8 +84,8 @@ data RenderTarget = RenderTarget {
     renderTargetFramebuffer :: Vk.Framebuffer
 }
 
-newContext :: (MonadIO m) => Vk.Device -> Word32 -> Vk.Format -> m Context
-newContext device contextQueueFamilyIndexGraphics format = do
+newContext :: (MonadIO m) => Vk.Device -> Word32 -> Vk.Format -> Vk.ImageLayout -> m Context
+newContext device contextQueueFamilyIndexGraphics format layout = do
     let contextDevice = device
 
     contextRenderPass <- Vk.createRenderPass
@@ -98,7 +99,7 @@ newContext device contextQueueFamilyIndexGraphics format = do
                 Vk.stencilLoadOp = Vk.ATTACHMENT_LOAD_OP_DONT_CARE,
                 Vk.stencilStoreOp = Vk.ATTACHMENT_STORE_OP_DONT_CARE,
                 Vk.initialLayout = Vk.IMAGE_LAYOUT_UNDEFINED,
-                Vk.finalLayout = Vk.IMAGE_LAYOUT_PRESENT_SRC_KHR
+                Vk.finalLayout = layout
             },
             Vk.subpasses = V.singleton (Vk.zero :: Vk.SubpassDescription) {
                 Vk.pipelineBindPoint = Vk.PIPELINE_BIND_POINT_GRAPHICS,
@@ -496,7 +497,7 @@ freeRenderTarget Context {..} renderTarget = do
     Vk.destroyImageView contextDevice (renderTargetImageView renderTarget) Nothing
 
 
-render :: (MonadIO m) => Vk.Queue -> Vk.Semaphore -> Vector Vk.Semaphore -> Vk.Fence -> Context -> Render -> RenderTarget -> m ()
+render :: (MonadIO m) => Vk.Queue -> Maybe Vk.Semaphore -> Vector Vk.Semaphore -> Vk.Fence -> Context -> Render -> RenderTarget -> m ()
 render queue wait signal fence Context {..} Render {..} RenderTarget {..} = do
     recordRender Context {..} Render {..} RenderTarget {..}
 
@@ -510,11 +511,20 @@ render queue wait signal fence Context {..} Render {..} RenderTarget {..} = do
     liftIO $ poke (castPtr uniformPtr) (V2 (fromIntegral rtWidth) (fromIntegral rtHeight) :: V2 Float)
     Vma.unmapMemory renderAllocator renderBufferUniformAlloc
 
-    Vk.queueSubmit queue
-        (V.singleton $ Vk.SomeStruct Vk.zero {
-            Vk.waitSemaphores = V.singleton wait,
-            Vk.waitDstStageMask = V.singleton Vk.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            Vk.commandBuffers = V.singleton $ Vk.commandBufferHandle renderCommandBuffer,
-            Vk.signalSemaphores = signal
-        } )
-        fence
+    case wait of
+        Just w -> Vk.queueSubmit queue
+            (V.singleton $ Vk.SomeStruct Vk.zero {
+                Vk.waitSemaphores = V.singleton w,
+                Vk.waitDstStageMask = V.singleton Vk.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                Vk.commandBuffers = V.singleton $ Vk.commandBufferHandle renderCommandBuffer,
+                Vk.signalSemaphores = signal
+            } )
+            fence
+        Nothing -> Vk.queueSubmit queue
+            (V.singleton $ Vk.SomeStruct Vk.zero {
+                Vk.waitSemaphores = V.empty,
+                Vk.waitDstStageMask = V.empty,
+                Vk.commandBuffers = V.singleton $ Vk.commandBufferHandle renderCommandBuffer,
+                Vk.signalSemaphores = signal
+            } )
+            fence

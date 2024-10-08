@@ -288,7 +288,7 @@ draw DeviceState {..} Context {..} Render {..} DrawState {..} SwapchainState {..
     let RenderTarget {..} = getRT $ fromIntegral index
     render
         deviceStateGQueue
-        drawStateSemImage
+        (Just drawStateSemImage)
         (V.singleton drawStateSemRender)
         drawStateFence
         Context {..}
@@ -366,7 +366,7 @@ main = do
         Vk.format = imageFormat
     } = surfaceStateFormat surfaceState
 
-    context <- newContext (deviceStateDev devState) (deviceStateGQueueFI devState) imageFormat
+    context <- newContext (deviceStateDev devState) (deviceStateGQueueFI devState) imageFormat Vk.IMAGE_LAYOUT_PRESENT_SRC_KHR
     renderState <- newRender allocator context
     drawState <- createDrawState devState
 
@@ -401,4 +401,5 @@ main = do
     destroyDevState devState
 
     GLFW.terminate
+
 

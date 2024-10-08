@@ -84,3 +84,30 @@ library
 
     -- Base language which the package is written in.
     default-language: Haskell2010
+
+test-suite tests
+    import:           warnings
+
+    main-is: Test.hs
+    -- other-modules:
+    -- 	Some other module
+
+    build-depends:
+    	base ^>=4.17.2.1,
+    	HUnit,
+    	mtl,
+    	transformers,
+    	bytestring,
+    	vector,
+    	vulkan,
+    	vulkan-utils,
+    	VulkanMemoryAllocator,
+    	linear,
+    	pizza
+
+    type: exitcode-stdio-1.0
+
+    hs-source-dirs:   tests
+
+    -- Base language which the package is written in.
+    default-language: Haskell2010
