@@ -75,7 +75,9 @@ executable pizza-preview-window
                       vector,
                       GLFW-b,
                       vulkan,
-                      vulkan-utils
+                      vulkan-utils,
+                      VulkanMemoryAllocator,
+                      pizza
 
     -- Directories containing source files.
     hs-source-dirs:   app
