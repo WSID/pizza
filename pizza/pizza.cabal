@@ -61,7 +61,10 @@ library
     -- Modules exported by the library.
     exposed-modules:
     	MyLib,
-    	Graphics.Pizza
+    	Graphics.Pizza,
+    	Graphics.Pizza.Preparation,
+    	Graphics.Pizza.Renderer,
+    	Graphics.Pizza.RenderTarget
 
     -- Modules included in this library but not exported.
     -- other-modules:
