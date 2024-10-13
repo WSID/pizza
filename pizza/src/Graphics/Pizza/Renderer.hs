@@ -19,17 +19,14 @@ import Linear
 
 -- vector
 import qualified Data.Vector as V
-import Data.Vector (Vector)
 
 -- bytestring
-import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
 
 -- vulkan
 import qualified Vulkan as Vk
 import qualified Vulkan.CStruct.Extends as Vk
 import qualified Vulkan.Dynamic as Vk
-import qualified Vulkan.Version as Vk
 import qualified Vulkan.Zero as Vk
 
 -- vulkan utils
@@ -65,9 +62,10 @@ data Renderer = Renderer {
     rendererShaderFrag :: Vk.ShaderModule,
 
     -- Pipelines
-    rendererDescriptorSetLayout :: Vk.DescriptorSetLayout,
-    rendererPipelineLayout :: Vk.PipelineLayout,
-    rendererPipeline :: Vk.Pipeline,
+    rendererScreenDSLayout :: Vk.DescriptorSetLayout,
+    rendererPatternSolidDSLayout :: Vk.DescriptorSetLayout,
+    rendererPatternSolidLayout :: Vk.PipelineLayout,
+    rendererPatternSolid :: Vk.Pipeline,
 
     -- Pools
     rendererDescriptorPool :: Vk.DescriptorPool,
@@ -188,7 +186,7 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
                 layout (location = 0)
                 in vec2 pos;
 
-                layout (binding = 0) uniform Screen {
+                layout (set = 0, binding = 0) uniform Screen {
                     vec2 size;
                 };
 
@@ -211,14 +209,18 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
                 layout (location = 0)
                 out vec4 color;
 
+                layout (set = 1, binding = 0) uniform PatternSolid {
+                    vec4 patternColor;
+                };
+
                 void main () {
-                    color = vec4(1.0f, 1.0f, 1.0f, 1.0f);
+                    color = patternColor;
                 }
             |]
         }
         Nothing
 
-    rendererDescriptorSetLayout <- Vk.createDescriptorSetLayout
+    rendererScreenDSLayout <- Vk.createDescriptorSetLayout
         environmentDevice
         Vk.zero {
             Vk.bindings = V.singleton Vk.zero {
@@ -230,11 +232,26 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
         }
         Nothing
 
-    rendererPipelineLayout <- Vk.createPipelineLayout
+    rendererPatternSolidDSLayout <- Vk.createDescriptorSetLayout
+        environmentDevice
+        Vk.zero {
+            Vk.bindings = V.singleton Vk.zero {
+                Vk.binding = 0,
+                Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                Vk.descriptorCount = 1,
+                Vk.stageFlags = Vk.SHADER_STAGE_FRAGMENT_BIT
+            }
+        }
+        Nothing
+
+    rendererPatternSolidLayout <- Vk.createPipelineLayout
         environmentDevice
         Vk.PipelineLayoutCreateInfo {
             Vk.flags = zeroBits,
-            Vk.setLayouts = V.singleton rendererDescriptorSetLayout,
+            Vk.setLayouts = V.fromList [
+                rendererScreenDSLayout,
+                rendererPatternSolidDSLayout
+            ],
             Vk.pushConstantRanges = V.empty
         }
         Nothing
@@ -317,22 +334,22 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
                 ]
             },
 
-            Vk.layout = rendererPipelineLayout,
+            Vk.layout = rendererPatternSolidLayout,
             Vk.renderPass = rendererRenderPass,
             Vk.subpass = 0
         } )
         Nothing
         -- TOOD: Move else to here!
 
-    let rendererPipeline = V.head pipelines
+    let rendererPatternSolid = V.head pipelines
 
     rendererDescriptorPool <- Vk.createDescriptorPool
         environmentDevice
         Vk.zero { -- Vk.DescriptorPoolCreateInfo
             Vk.flags = Vk.DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
-            Vk.maxSets = 1,
+            Vk.maxSets = 32,
             Vk.poolSizes = V.singleton $
-                Vk.DescriptorPoolSize Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER 1
+                Vk.DescriptorPoolSize Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER 32
         }
         Nothing
 
@@ -350,9 +367,10 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
 freeRenderer :: (MonadIO m) => Renderer -> m ()
 freeRenderer Renderer {..} = do
     let Environment {..} = rendererEnvironment
-    Vk.destroyPipeline environmentDevice rendererPipeline Nothing
-    Vk.destroyPipelineLayout environmentDevice rendererPipelineLayout Nothing
-    Vk.destroyDescriptorSetLayout environmentDevice rendererDescriptorSetLayout Nothing
+    Vk.destroyPipeline environmentDevice rendererPatternSolid Nothing
+    Vk.destroyPipelineLayout environmentDevice rendererPatternSolidLayout Nothing
+    Vk.destroyDescriptorSetLayout environmentDevice rendererPatternSolidDSLayout Nothing
+    Vk.destroyDescriptorSetLayout environmentDevice rendererScreenDSLayout Nothing
     Vk.destroyShaderModule environmentDevice rendererShaderFrag Nothing
     Vk.destroyShaderModule environmentDevice rendererShaderVert Nothing
     Vk.destroyRenderPass environmentDevice rendererRenderPass Nothing

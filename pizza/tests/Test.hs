@@ -50,15 +50,22 @@ import qualified VulkanMemoryAllocator as Vma
 
 -- pizza
 import Graphics.Pizza
-import Graphics.Pizza.Preparation
-import Graphics.Pizza.Renderer
-import Graphics.Pizza.RenderTarget
 
 main :: IO ()
 main = runTestTTAndExit $ TestList [
-        "White Images" ~: do
-            pixel <- makeRenderedImage
-            assert $ all (== V4 255 255 255 255) pixel
+        "Patterns" ~: TestList [
+            "Red" ~: do
+                pixel <- makeRenderedImage (PatternSolid (V4 1 0 0 1))
+                assert $ all (== V4 255 0 0 255) pixel
+            ,
+            "Green" ~: do
+                pixel <- makeRenderedImage (PatternSolid (V4 0 1 0 1))
+                assert $ all (== V4 0 255 0 255) pixel
+            ,
+            "Blue" ~: do
+                pixel <- makeRenderedImage (PatternSolid (V4 0 0 1 1))
+                assert $ all (== V4 0 0 255 255) pixel
+        ]
     ]
 
 
@@ -68,8 +75,8 @@ data DevSelection = DevSelection {
 }
 
 
-makeRenderedImage :: IO [V4 Word8]
-makeRenderedImage = evalContT do
+makeRenderedImage :: Pattern -> IO [V4 Word8]
+makeRenderedImage pattern = evalContT do
     -- Make use of ContT, with bracket.
     -- This will make such items to be freed at out of 'scope'.
 
@@ -97,16 +104,24 @@ makeRenderedImage = evalContT do
 
     -- Pizzas
     renderer <- ContT $ bracket
-        (newRenderer format Vk.IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+        (newRenderer environment format Vk.IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
         freeRenderer
 
     renderTarget <- ContT $ bracket
         (newRenderTarget renderer 200 200 format)
         (freeRenderTarget renderer)
 
-    renderState <- ContT $ bracket
-        (newPreparation renderer)
+    preparation <- ContT $ bracket
+        (newPreparation renderer pattern)
         (freePreparation renderer)
+
+    liftIO $ putStrLn "Pizza Preparation"
+
+    renderState <- ContT $ bracket
+        (newRenderState renderer)
+        (freeRenderState renderer)
+
+    liftIO $ putStrLn "Pizza Render State"
 
 
     -- Command Pool
@@ -146,23 +161,11 @@ makeRenderedImage = evalContT do
 
     transferFence <- ContT $ Vk.withFence environmentDevice Vk.zero Nothing bracket
 
-    let RenderTarget {
-        renderTargetBase = rtbase
-    } = renderTarget
-
-    render
-        environment
-        Nothing
-        (V.singleton renderSem)
-        Vk.NULL_HANDLE
-        renderer
-        renderState
-        200 200
-        rtbase
+    renderRenderStateTarget renderer renderState preparation renderTarget Nothing
 
     Vk.queueSubmit environmentGraphicsQueue
         (V.singleton $ Vk.SomeStruct Vk.zero {
-            Vk.waitSemaphores = V.singleton renderSem,
+            Vk.waitSemaphores = V.singleton (renderStateSemaphore renderState),
             Vk.waitDstStageMask = V.singleton Vk.PIPELINE_STAGE_TRANSFER_BIT,
             Vk.commandBuffers = V.singleton $ Vk.commandBufferHandle commandBuffer
         })
@@ -175,3 +178,4 @@ makeRenderedImage = evalContT do
     let pixelPtr = castPtr ptr :: Ptr (V4 Word8)
 
     liftIO $ peekArray (200 * 200) pixelPtr
+

@@ -62,8 +62,10 @@ library
     exposed-modules:
     	MyLib,
     	Graphics.Pizza,
+    	Graphics.Pizza.Graphic,
     	Graphics.Pizza.Preparation,
     	Graphics.Pizza.Renderer,
+    	Graphics.Pizza.RenderState,
     	Graphics.Pizza.RenderTarget,
     	Graphics.Pizza.Internal.TypedBuffer
 

@@ -8,10 +8,6 @@ import Control.Monad.IO.Class
 
 import Data.Bits
 import Data.Foldable
-import Data.Traversable
-
--- linear
-import Linear
 
 -- vector
 import qualified Data.Vector as V
@@ -20,15 +16,12 @@ import Data.Vector (Vector)
 -- vulkan
 import qualified Vulkan as Vk
 import qualified Vulkan.Zero as Vk
-import qualified Vulkan.CStruct.Extends as Vk
-import qualified Vulkan.Version as Vk
 
 -- VulkanMemoryAllocator
 import qualified VulkanMemoryAllocator as Vma
 
 -- pizza
 import Graphics.Pizza.Renderer
-import Graphics.Pizza.Preparation
 
 data BaseRenderTarget = BaseRenderTarget {
     renderTargetImageView :: Vk.ImageView,
