@@ -43,8 +43,9 @@ data Preparation = Preparation {
     preparationBufferUniform :: Vk.Buffer
 }
 
-newPreparation :: (MonadIO m) => Environment -> Renderer -> m Preparation
-newPreparation Environment {..} Renderer {..} = do
+newPreparation :: (MonadIO m) => Renderer -> m Preparation
+newPreparation Renderer {..} = do
+    let Environment {..} = rendererEnvironment
     commandBuffers <- Vk.allocateCommandBuffers
         environmentDevice
         Vk.zero { -- Vk.CommandBufferAllocateInfo
@@ -136,8 +137,9 @@ newPreparation Environment {..} Renderer {..} = do
 
     pure Preparation {..}
 
-freePreparation :: (MonadIO m) => Environment -> Renderer -> Preparation -> m ()
-freePreparation Environment {..} Renderer {..} Preparation {..} = do
+freePreparation :: (MonadIO m) => Renderer -> Preparation -> m ()
+freePreparation Renderer {..} Preparation {..} = do
+    let Environment {..} = rendererEnvironment
     Vma.destroyBuffer environmentAllocator preparationBufferUniform preparationBufferUniformAlloc
     Vma.destroyBuffer environmentAllocator preparationBufferIndex preparationBufferIndexAlloc
     Vma.destroyBuffer environmentAllocator preparationBufferVertex preparationBufferVertexAlloc

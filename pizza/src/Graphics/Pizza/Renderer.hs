@@ -50,6 +50,9 @@ data Environment = Environment {
 
 
 data Renderer = Renderer {
+    -- Unowned reference
+    rendererEnvironment :: Environment,
+
     -- Renderer Properties
     rendererImageFormat :: Vk.Format,
     rendererImageLayout :: Vk.ImageLayout,
@@ -144,7 +147,9 @@ freeEnvironment Environment {..} = do
 
 
 newRenderer :: (MonadIO m) => Environment -> Vk.Format -> Vk.ImageLayout -> m Renderer
-newRenderer Environment {..} rendererImageFormat rendererImageLayout = do
+newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
+    let Environment {..} = rendererEnvironment
+
     rendererRenderPass <- Vk.createRenderPass
         environmentDevice
         Vk.zero {   -- Vk.RenderPassCreateInfo
@@ -342,8 +347,9 @@ newRenderer Environment {..} rendererImageFormat rendererImageLayout = do
     pure Renderer {..}
 
 
-freeRenderer :: (MonadIO m) => Environment -> Renderer -> m ()
-freeRenderer Environment {..} Renderer {..} = do
+freeRenderer :: (MonadIO m) => Renderer -> m ()
+freeRenderer Renderer {..} = do
+    let Environment {..} = rendererEnvironment
     Vk.destroyPipeline environmentDevice rendererPipeline Nothing
     Vk.destroyPipelineLayout environmentDevice rendererPipelineLayout Nothing
     Vk.destroyDescriptorSetLayout environmentDevice rendererDescriptorSetLayout Nothing

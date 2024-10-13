@@ -38,8 +38,10 @@ import Graphics.Pizza.Renderer
 import Graphics.Pizza.RenderTarget
 
 
-render :: (MonadIO m) => Environment -> Maybe Vk.Semaphore -> Vector Vk.Semaphore -> Vk.Fence -> Renderer -> Preparation -> Int -> Int ->  BaseRenderTarget -> m ()
-render Environment {..} wait signal fence Renderer {..} Preparation {..} width height BaseRenderTarget {..} = do
+render :: (MonadIO m) => Renderer -> Maybe Vk.Semaphore -> Vector Vk.Semaphore -> Vk.Fence -> Preparation -> Int -> Int ->  BaseRenderTarget -> m ()
+render Renderer {..} wait signal fence Preparation {..} width height BaseRenderTarget {..} = do
+    let Environment {..} = rendererEnvironment
+
     recordBaseRenderTarget
         preparationCommandBuffer
         Renderer {..}

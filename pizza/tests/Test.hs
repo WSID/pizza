@@ -97,16 +97,16 @@ makeRenderedImage = evalContT do
 
     -- Pizzas
     renderer <- ContT $ bracket
-        (newRenderer environment format Vk.IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
-        (freeRenderer environment)
+        (newRenderer format Vk.IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+        freeRenderer
 
     renderTarget <- ContT $ bracket
-        (newRenderTarget environment renderer 200 200 format)
-        (freeRenderTarget environment)
+        (newRenderTarget renderer 200 200 format)
+        (freeRenderTarget renderer)
 
     renderState <- ContT $ bracket
-        (newPreparation environment renderer)
-        (freePreparation environment renderer)
+        (newPreparation renderer)
+        (freePreparation renderer)
 
 
     -- Command Pool

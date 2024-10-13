@@ -263,11 +263,10 @@ draw Pz.Environment {..} Pz.Renderer {..} Pz.Preparation {..} DrawState {..} wid
 
     let Pz.BaseRenderTarget {..} = renderTargetBase ! fromIntegral index
     Pz.render
-        Pz.Environment {..}
+        Pz.Renderer {..}
         (Just drawStateSemImage)
         (V.singleton drawStateSemRender)
         drawStateFence
-        Pz.Renderer {..}
         Pz.Preparation {..}
         width height
         Pz.BaseRenderTarget {..}
@@ -324,9 +323,9 @@ main = do
     } = surfaceStateFormat surfaceState
 
     renderer <- Pz.newRenderer environment imageFormat Vk.IMAGE_LAYOUT_PRESENT_SRC_KHR
-    preparation <- Pz.newPreparation environment renderer
+    preparation <- Pz.newPreparation renderer
     drawState <- createDrawState environment
-    renderTarget <- Pz.newSwapchainRenderTarget environment renderer swapchain width height imageFormat
+    renderTarget <- Pz.newSwapchainRenderTarget renderer swapchain width height imageFormat
 
     keepAlive <- newIORef True
     GLFW.setWindowCloseCallback win $ Just (\_ -> writeIORef keepAlive False)
@@ -338,10 +337,10 @@ main = do
         a <- readIORef keepAlive
         when a (GLFW.waitEvents >> recur)
 
-    Pz.freeSwapchainRenderTarget environment renderTarget
+    Pz.freeSwapchainRenderTarget renderer renderTarget
     destroyDrawState environment drawState
-    Pz.freePreparation environment renderer preparation
-    Pz.freeRenderer environment renderer
+    Pz.freePreparation renderer preparation
+    Pz.freeRenderer renderer
     Vk.destroySwapchainKHR (Pz.environmentDevice environment) swapchain Nothing
     destroySurfaceState environment surfaceState
 
