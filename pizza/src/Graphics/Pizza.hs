@@ -36,6 +36,7 @@ import qualified VulkanMemoryAllocator as Vma
 import Graphics.Pizza.Preparation
 import Graphics.Pizza.Renderer
 import Graphics.Pizza.RenderTarget
+import Graphics.Pizza.Internal.TypedBuffer
 
 
 render :: (MonadIO m) => Renderer -> Maybe Vk.Semaphore -> Vector Vk.Semaphore -> Vk.Fence -> Preparation -> Int -> Int ->  BaseRenderTarget -> m ()
@@ -49,10 +50,7 @@ render Renderer {..} wait signal fence Preparation {..} width height BaseRenderT
         BaseRenderTarget {..}
         $ recordPreparation preparationCommandBuffer Renderer {..} Preparation {..}
 
-    uniformPtr <- Vma.mapMemory environmentAllocator preparationBufferUniformAlloc
-
-    liftIO $ poke (castPtr uniformPtr) (V2 (fromIntegral width) (fromIntegral height) :: V2 Float)
-    Vma.unmapMemory environmentAllocator preparationBufferUniformAlloc
+    writeTypedBuffer1 Renderer {..} preparationBufferUniform $ fromIntegral <$> V2 width height
 
     case wait of
         Just w -> Vk.queueSubmit environmentGraphicsQueue
