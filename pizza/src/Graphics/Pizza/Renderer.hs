@@ -60,18 +60,19 @@ data Renderer = Renderer {
     -- Pipeline common
     rendererShaderVert :: Vk.ShaderModule,
     rendererScreenDSLayout :: Vk.DescriptorSetLayout,
+    rendererPatternDSLayout :: Vk.DescriptorSetLayout,
+    rendererPatternLayout :: Vk.PipelineLayout,
 
     -- Pattern Solid
     rendererPatternSolidShaderFrag :: Vk.ShaderModule,
-    rendererPatternSolidDSLayout :: Vk.DescriptorSetLayout,
-    rendererPatternSolidLayout :: Vk.PipelineLayout,
     rendererPatternSolid :: Vk.Pipeline,
 
     -- Pattern Linear
     rendererPatternLinearShaderFrag :: Vk.ShaderModule,
-    rendererPatternLinearDSLayout :: Vk.DescriptorSetLayout,
-    rendererPatternLinearLayout :: Vk.PipelineLayout,
     rendererPatternLinear :: Vk.Pipeline,
+
+    rendererPatternRadialShaderFrag :: Vk.ShaderModule,
+    rendererPatternRadial :: Vk.Pipeline,
 
     -- Pools
     rendererDescriptorPool :: Vk.DescriptorPool,
@@ -303,6 +304,30 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
         }
         Nothing
 
+    rendererPatternDSLayout <- Vk.createDescriptorSetLayout
+        environmentDevice
+        Vk.zero {
+            Vk.bindings = V.singleton Vk.zero {
+                Vk.binding = 0,
+                Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                Vk.descriptorCount = 1,
+                Vk.stageFlags = Vk.SHADER_STAGE_FRAGMENT_BIT
+            }
+        }
+        Nothing
+
+    rendererPatternLayout <- Vk.createPipelineLayout
+        environmentDevice
+        Vk.PipelineLayoutCreateInfo {
+            Vk.flags = zeroBits,
+            Vk.setLayouts = V.fromList [
+                rendererScreenDSLayout,
+                rendererPatternDSLayout
+            ],
+            Vk.pushConstantRanges = V.empty
+        }
+        Nothing
+
 
     rendererPatternSolidShaderFrag <- Vk.createShaderModule
         environmentDevice
@@ -326,33 +351,6 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
             |]
         }
         Nothing
-
-    rendererPatternSolidDSLayout <- Vk.createDescriptorSetLayout
-        environmentDevice
-        Vk.zero {
-            Vk.bindings = V.singleton Vk.zero {
-                Vk.binding = 0,
-                Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                Vk.descriptorCount = 1,
-                Vk.stageFlags = Vk.SHADER_STAGE_FRAGMENT_BIT
-            }
-        }
-        Nothing
-
-    rendererPatternSolidLayout <- Vk.createPipelineLayout
-        environmentDevice
-        Vk.PipelineLayoutCreateInfo {
-            Vk.flags = zeroBits,
-            Vk.setLayouts = V.fromList [
-                rendererScreenDSLayout,
-                rendererPatternSolidDSLayout
-            ],
-            Vk.pushConstantRanges = V.empty
-        }
-        Nothing
-
-
-
 
     rendererPatternLinearShaderFrag <- Vk.createShaderModule
         environmentDevice
@@ -384,27 +382,32 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
         }
         Nothing
 
-    rendererPatternLinearDSLayout <- Vk.createDescriptorSetLayout
+    rendererPatternRadialShaderFrag <- Vk.createShaderModule
         environmentDevice
-        Vk.zero {
-            Vk.bindings = V.singleton Vk.zero {
-                Vk.binding = 0,
-                Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                Vk.descriptorCount = 1,
-                Vk.stageFlags = Vk.SHADER_STAGE_FRAGMENT_BIT
-            }
-        }
-        Nothing
+        Vk.zero { -- Vk.ShaderModuleCreateInfo
+            Vk.code = [Vku.frag|
+                #version 450
 
-    rendererPatternLinearLayout <- Vk.createPipelineLayout
-        environmentDevice
-        Vk.PipelineLayoutCreateInfo {
-            Vk.flags = zeroBits,
-            Vk.setLayouts = V.fromList [
-                rendererScreenDSLayout,
-                rendererPatternLinearDSLayout
-            ],
-            Vk.pushConstantRanges = V.empty
+                layout (location = 0)
+                in vec2 fragPos;
+
+                layout (location = 0)
+                out vec4 color;
+
+                layout (set = 1, binding = 0) uniform PatternRadial {
+                    vec2 patternPosCenter;
+                    float patternPosRadius;
+                    vec4 patternColorStart;
+                    vec4 patternColorEnd;
+                };
+
+                void main () {
+                    float dist = distance(fragPos, patternPosCenter);
+
+                    float alpha = clamp (dist / patternPosRadius, 0, 1);
+                    color = mix (patternColorStart, patternColorEnd, alpha);
+                }
+            |]
         }
         Nothing
 
@@ -413,13 +416,14 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
         environmentDevice
         Vk.NULL_HANDLE
         (V.fromList [
-            Vk.SomeStruct $ basePipelineCreateInfo rendererPatternSolidShaderFrag rendererPatternSolidLayout,
-            Vk.SomeStruct $ basePipelineCreateInfo rendererPatternLinearShaderFrag rendererPatternLinearLayout
+            Vk.SomeStruct $ basePipelineCreateInfo rendererPatternSolidShaderFrag rendererPatternLayout,
+            Vk.SomeStruct $ basePipelineCreateInfo rendererPatternLinearShaderFrag rendererPatternLayout,
+            Vk.SomeStruct $ basePipelineCreateInfo rendererPatternRadialShaderFrag rendererPatternLayout
         ] )
         Nothing
         -- TOOD: Move else to here!
 
-    let [rendererPatternSolid, rendererPatternLinear] = V.toList pipelines
+    let [rendererPatternSolid, rendererPatternLinear, rendererPatternRadial] = V.toList pipelines
 
     rendererDescriptorPool <- Vk.createDescriptorPool
         environmentDevice
@@ -445,14 +449,14 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
 freeRenderer :: (MonadIO m) => Renderer -> m ()
 freeRenderer Renderer {..} = do
     let Environment {..} = rendererEnvironment
+    Vk.destroyPipeline environmentDevice rendererPatternRadial Nothing
+    Vk.destroyShaderModule environmentDevice rendererPatternRadialShaderFrag Nothing
     Vk.destroyPipeline environmentDevice rendererPatternLinear Nothing
-    Vk.destroyPipelineLayout environmentDevice rendererPatternLinearLayout Nothing
-    Vk.destroyDescriptorSetLayout environmentDevice rendererPatternLinearDSLayout Nothing
     Vk.destroyShaderModule environmentDevice rendererPatternLinearShaderFrag Nothing
     Vk.destroyPipeline environmentDevice rendererPatternSolid Nothing
-    Vk.destroyPipelineLayout environmentDevice rendererPatternSolidLayout Nothing
-    Vk.destroyDescriptorSetLayout environmentDevice rendererPatternSolidDSLayout Nothing
     Vk.destroyShaderModule environmentDevice rendererPatternSolidShaderFrag Nothing
+    Vk.destroyPipelineLayout environmentDevice rendererPatternLayout Nothing
+    Vk.destroyDescriptorSetLayout environmentDevice rendererPatternDSLayout Nothing
     Vk.destroyDescriptorSetLayout environmentDevice rendererScreenDSLayout Nothing
     Vk.destroyShaderModule environmentDevice rendererShaderVert Nothing
     Vk.destroyRenderPass environmentDevice rendererRenderPass Nothing

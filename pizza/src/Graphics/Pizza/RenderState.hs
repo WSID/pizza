@@ -153,7 +153,7 @@ setRenderStateTargetBase Renderer {..} RenderState {..} Preparation {..} width h
             Vk.cmdBindDescriptorSets
                 renderStateCommandBuffer
                 Vk.PIPELINE_BIND_POINT_GRAPHICS
-                rendererPatternSolidLayout
+                rendererPatternLayout
                 0
                 (V.singleton renderStateScreenDS)
                 (V.empty)

@@ -26,7 +26,8 @@ import Graphics.Pizza.Graphic
 import Graphics.Pizza.Renderer
 import Graphics.Pizza.Internal.TypedBuffer
 
-data PreparationLinear = PreparationLinear {patternPosStart :: V2 Float,
+data PreparationLinear = PreparationLinear {
+    patternPosStart :: V2 Float,
     patternPosEnd :: V2 Float,
     patternColorStart :: V4 Float,
     patternColorEnd :: V4 Float
@@ -34,7 +35,7 @@ data PreparationLinear = PreparationLinear {patternPosStart :: V2 Float,
 
 instance Storable PreparationLinear where
     sizeOf _ = 48
-    alignment _ = 4
+    alignment _ = 8
 
     peek ptr = do
         patternPosStart <- peekByteOff ptr 0
@@ -49,6 +50,30 @@ instance Storable PreparationLinear where
         pokeByteOff ptr 16 patternColorStart
         pokeByteOff ptr 32 patternColorEnd
 
+
+data PreparationRadial = PreparationRadial {
+    patternPosCenter :: V2 Float,
+    patternPosRadius :: Float,
+    patternColorStart :: V4 Float,
+    patternColorEnd :: V4 Float
+}
+
+instance Storable PreparationRadial where
+    sizeOf _ = 48
+    alignment _ = 8
+
+    peek ptr = do
+        patternPosCenter <- peekByteOff ptr 0
+        patternPosRadius <- peekByteOff ptr 8
+        patternColorStart <- peekByteOff ptr 16
+        patternColorEnd <- peekByteOff ptr 32
+        pure PreparationRadial {..}
+
+    poke ptr PreparationRadial {..} = do
+        pokeByteOff ptr 0 patternPosCenter
+        pokeByteOff ptr 8 patternPosRadius
+        pokeByteOff ptr 16 patternColorStart
+        pokeByteOff ptr 32 patternColorEnd
 
 
 -- | Rendering Operation
@@ -73,37 +98,30 @@ newPreparation Renderer {..} pattern = do
         Vk.BUFFER_USAGE_INDEX_BUFFER_BIT
         [V3 0 1 2, V3 0 2 3]
 
-    (preparationPatternDS, preparationBufferPattern) <- case pattern of
+    descriptorSets <- Vk.allocateDescriptorSets
+        environmentDevice
+        Vk.zero { -- Vk.DescriptorSetAllocateInfo
+            Vk.next = (),
+            Vk.descriptorPool = rendererDescriptorPool,
+            Vk.setLayouts = V.singleton rendererPatternDSLayout
+        }
+    let preparationPatternDS = V.head descriptorSets
+
+    preparationBufferPattern <- case pattern of
         PatternSolid color -> do
-            descriptorSets <- Vk.allocateDescriptorSets
-                environmentDevice
-                Vk.zero { -- Vk.DescriptorSetAllocateInfo
-                    Vk.next = (),
-                    Vk.descriptorPool = rendererDescriptorPool,
-                    Vk.setLayouts = V.singleton rendererPatternSolidDSLayout
-                }
-            let patternDS = V.head descriptorSets
             patternBuffer <- newTypedBufferN Renderer {..} Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 1
             writeTypedBuffer1 Renderer {..} patternBuffer color
-            let patternBufferV = castTypedBuffer patternBuffer
-
-            pure (patternDS, patternBufferV)
+            pure $ castTypedBuffer patternBuffer
 
         PatternLinear ps pe cs ce -> do
-            descriptorSets <- Vk.allocateDescriptorSets
-                environmentDevice
-                Vk.zero { -- Vk.DescriptorSetAllocateInfo
-                    Vk.next = (),
-                    Vk.descriptorPool = rendererDescriptorPool,
-                    Vk.setLayouts = V.singleton rendererPatternLinearDSLayout
-                }
-            let patternDS = V.head descriptorSets
-
             patternBuffer <- newTypedBufferN Renderer {..} Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 1
             writeTypedBuffer1 Renderer {..} patternBuffer $ PreparationLinear ps pe cs ce
-            let patternBufferV = castTypedBuffer patternBuffer
+            pure $ castTypedBuffer patternBuffer
 
-            pure (patternDS, patternBufferV)
+        PatternRadial ps r cs ce -> do
+            patternBuffer <- newTypedBufferN Renderer {..} Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 1
+            writeTypedBuffer1 Renderer {..} patternBuffer $ PreparationRadial ps r cs ce
+            pure $ castTypedBuffer patternBuffer
 
     -- Fill content
 
@@ -145,7 +163,8 @@ recordPreparationCommand Renderer {..} Preparation {..} cmdbuf = do
         Vk.PIPELINE_BIND_POINT_GRAPHICS
         (case preparationPattern of
             PatternSolid _ -> rendererPatternSolid
-            PatternLinear _ _ _ _ -> rendererPatternLinear
+            PatternLinear {} -> rendererPatternLinear
+            PatternRadial {} -> rendererPatternRadial
         )
 
     Vk.cmdBindIndexBuffer
@@ -161,7 +180,7 @@ recordPreparationCommand Renderer {..} Preparation {..} cmdbuf = do
     Vk.cmdBindDescriptorSets
         cmdbuf
         Vk.PIPELINE_BIND_POINT_GRAPHICS
-        rendererPatternSolidLayout
+        rendererPatternLayout
         1
         (V.singleton preparationPatternDS)
         (V.empty)

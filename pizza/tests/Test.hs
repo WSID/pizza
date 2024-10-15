@@ -66,6 +66,10 @@ main = do
                     "Diagonal Red Blue" ~: testPatterns (PatternLinear (V2 0 0) (V2 200 200) (V4 1 0 0 1) (V4 0 0 0 1)),
                     "Left Right Yellow Cyan" ~: testPatterns (PatternLinear (V2 0 0) (V2 200 0) (V4 1 1 0 1) (V4 0 1 1 1)),
                     "Up Down White Black" ~: testPatterns (PatternLinear (V2 0 0) (V2 0 200) (V4 1 1 1 1) (V4 0 0 0 1))
+                ],
+                "Radial Gradient" ~: TestList [
+                    "Center Red Black" ~: testPatterns (PatternRadial (V2 100 100) 100 (V4 1 0 0 1) (V4 0 0 0 1)),
+                    "Left Up Blue Green" ~: testPatterns (PatternRadial (V2 0 0) 200 (V4 0 0 1 1) (V4 1 1 1 1))
                 ]
             ]
         ]
@@ -87,6 +91,12 @@ makeExpectedImage (PatternLinear ps pe cs ce) = let
         disp = p - ps
         size = pe - ps
         npos = dot disp size / dot size size
+        nposc = max 0 . min 1 $ npos
+        in convertColor $ lerp nposc cs ce
+    in fmap color coordinates
+makeExpectedImage (PatternRadial pc r cs ce) = let
+    color p = let
+        npos = distance p pc / r
         nposc = max 0 . min 1 $ npos
         in convertColor $ lerp nposc cs ce
     in fmap color coordinates
