@@ -7,7 +7,6 @@
 
 module Graphics.Pizza.Internal.TypedBuffer where
 
-import Control.Exception
 import Control.Monad.IO.Class
 
 import Data.Foldable
@@ -16,12 +15,8 @@ import Foreign.Storable
 import Foreign.Ptr
 import Foreign.Marshal.Array
 
--- linear
-import Linear
-
 -- vector
 import qualified Data.Vector as V
-import Data.Vector (Vector)
 
 -- vulkan
 import qualified Vulkan as Vk
@@ -77,6 +72,9 @@ newTypedBufferF renderer usage f = do
     unmapTypedBuffer renderer typedBuffer
 
     pure typedBuffer
+
+castTypedBuffer :: TypedBuffer a -> TypedBuffer b
+castTypedBuffer TypedBuffer {..} = TypedBuffer {..}
 
 
 freeTypedBuffer :: (MonadIO m) => Renderer -> TypedBuffer a -> m ()

@@ -238,7 +238,8 @@ main = do
     } = surfaceStateFormat surfaceState
 
     renderer <- Pz.newRenderer environment imageFormat Vk.IMAGE_LAYOUT_PRESENT_SRC_KHR
-    preparation <- Pz.newPreparation renderer (Pz.PatternSolid (V4 1 1 1 1))
+    --preparation <- Pz.newPreparation renderer (Pz.PatternSolid (V4 1 1 0 1))
+    preparation <- Pz.newPreparation renderer (Pz.PatternLinear (V2 0 0) (V2 200 200) (V4 1 0 0 1) (V4 0 0 1 1))
     renderTarget <- Pz.newSwapchainRenderTarget renderer swapchain width height imageFormat
     renderState <- Pz.newRenderStateSwapchain renderer
 

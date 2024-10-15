@@ -14,6 +14,7 @@ import Data.Function ((&))
 
 import Control.Monad.IO.Class
 import Control.Exception (bracket)
+import Control.Monad
 
 import Foreign.Ptr
 import Foreign.Storable
@@ -52,28 +53,68 @@ import qualified VulkanMemoryAllocator as Vma
 import Graphics.Pizza
 
 main :: IO ()
-main = runTestTTAndExit $ TestList [
-        "Patterns" ~: TestList [
-            "Red" ~: do
-                pixel <- makeRenderedImage (PatternSolid (V4 1 0 0 1))
-                assert $ all (== V4 255 0 0 255) pixel
-            ,
-            "Green" ~: do
-                pixel <- makeRenderedImage (PatternSolid (V4 0 1 0 1))
-                assert $ all (== V4 0 255 0 255) pixel
-            ,
-            "Blue" ~: do
-                pixel <- makeRenderedImage (PatternSolid (V4 0 0 1 1))
-                assert $ all (== V4 0 0 255 255) pixel
+main = do
+    runTestTTAndExit $ TestList [
+            "Patterns" ~: TestList [
+                "Solid" ~: TestList [
+                    "Red" ~: testPatterns (PatternSolid (V4 1 0 0 1)),
+                    "Green" ~: testPatterns (PatternSolid (V4 0 1 0 1)),
+                    "Blue" ~: testPatterns (PatternSolid (V4 0 0 1 1)),
+                    "Grey" ~: testPatterns (PatternSolid (V4 0.5 0.5 0.5 1))
+                ],
+                "Linear Gradient" ~: TestList [
+                    "Diagonal Red Blue" ~: testPatterns (PatternLinear (V2 0 0) (V2 200 200) (V4 1 0 0 1) (V4 0 0 0 1)),
+                    "Left Right Yellow Cyan" ~: testPatterns (PatternLinear (V2 0 0) (V2 200 0) (V4 1 1 0 1) (V4 0 1 1 1)),
+                    "Up Down White Black" ~: testPatterns (PatternLinear (V2 0 0) (V2 0 200) (V4 1 1 1 1) (V4 0 0 0 1))
+                ]
+            ]
         ]
-    ]
+
+coordinates :: [V2 Float]
+coordinates = do
+    y <- [0, 1 .. 199]
+    x <- [0, 1 .. 199]
+    pure $ V2 x y
 
 
-data DevSelection = DevSelection {
-    selectedDevice :: Vk.PhysicalDevice,
-    selectedQFI :: Word32
-}
+convertColor :: V4 Float -> V4 Word8
+convertColor c = floor . min 255 . (* 256) <$> c
 
+makeExpectedImage :: Pattern -> [V4 Word8]
+makeExpectedImage (PatternSolid c) = replicate 40000 (convertColor c)
+makeExpectedImage (PatternLinear ps pe cs ce) = let
+    color p = let
+        disp = p - ps
+        size = pe - ps
+        npos = dot disp size / dot size size
+        nposc = max 0 . min 1 $ npos
+        in convertColor $ lerp nposc cs ce
+    in fmap color coordinates
+
+checkImages :: [V4 Word8] -> [V4 Word8] -> IO Bool
+checkImages a b = do
+    let ai = fmap fromIntegral <$> a :: [V4 Int]
+        bi = fmap fromIntegral <$> b :: [V4 Int]
+        r = zipWith (-) ai bi
+        rs = sum . sum $ fmap abs r
+        rn = length r
+        good = rs < (16 * rn)
+
+    putStrLn $ "Sum of Difference: " ++ show rs
+    putStrLn $ "  Difference per pixel: " ++ show (rs `div` rn)
+
+    unless good $ do
+        print a
+        putStrLn "\n"
+        print b
+
+    pure good
+
+testPatterns :: Pattern -> Assertion
+testPatterns pattern = do
+    actual <- makeRenderedImage pattern
+    let expected = makeExpectedImage pattern
+    assert $ checkImages actual expected
 
 makeRenderedImage :: Pattern -> IO [V4 Word8]
 makeRenderedImage pattern = evalContT do
@@ -84,7 +125,7 @@ makeRenderedImage pattern = evalContT do
     environment <- ContT $ bracket newBasicEnvironment freeEnvironment
     let Environment {..} = environment
 
-    let format = Vk.FORMAT_R8G8B8A8_UINT
+    let format = Vk.FORMAT_R8G8B8A8_UNORM
 
     -- Staging Buffer
     (staging, stagingAlloc, _) <- ContT $ Vma.withBuffer environmentAllocator
