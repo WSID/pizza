@@ -8,6 +8,10 @@ import Control.Monad.IO.Class
 
 import Data.Functor
 import Data.Bits
+import Data.Word
+
+import Foreign.Ptr
+import Foreign.Storable
 
 -- linear
 import Linear
@@ -22,17 +26,71 @@ import qualified Vulkan.Zero as Vk
 import qualified Vulkan.CStruct.Extends as Vk
 
 -- pizza
-import Graphics.Pizza.Preparation
+import Graphics.Pizza.Graphic
 import Graphics.Pizza.Renderer
 import Graphics.Pizza.RenderTarget
 import Graphics.Pizza.Internal.TypedBuffer
 
 -- Render State!
 
+
+data PreparationLinear = PreparationLinear {
+    patternPosStart :: V2 Float,
+    patternPosEnd :: V2 Float,
+    patternColorStart :: V4 Float,
+    patternColorEnd :: V4 Float
+}
+
+instance Storable PreparationLinear where
+    sizeOf _ = 48
+    alignment _ = 8
+
+    peek ptr = do
+        patternPosStart <- peekByteOff ptr 0
+        patternPosEnd <- peekByteOff ptr 8
+        patternColorStart <- peekByteOff ptr 16
+        patternColorEnd <- peekByteOff ptr 32
+        pure PreparationLinear {..}
+
+    poke ptr PreparationLinear {..} = do
+        pokeByteOff ptr 0 patternPosStart
+        pokeByteOff ptr 8 patternPosEnd
+        pokeByteOff ptr 16 patternColorStart
+        pokeByteOff ptr 32 patternColorEnd
+
+
+data PreparationRadial = PreparationRadial {
+    patternPosCenter :: V2 Float,
+    patternPosRadius :: Float,
+    patternColorStart :: V4 Float,
+    patternColorEnd :: V4 Float
+}
+
+instance Storable PreparationRadial where
+    sizeOf _ = 48
+    alignment _ = 8
+
+    peek ptr = do
+        patternPosCenter <- peekByteOff ptr 0
+        patternPosRadius <- peekByteOff ptr 8
+        patternColorStart <- peekByteOff ptr 16
+        patternColorEnd <- peekByteOff ptr 32
+        pure PreparationRadial {..}
+
+    poke ptr PreparationRadial {..} = do
+        pokeByteOff ptr 0 patternPosCenter
+        pokeByteOff ptr 8 patternPosRadius
+        pokeByteOff ptr 16 patternColorStart
+        pokeByteOff ptr 32 patternColorEnd
+
 data RenderState = RenderState {
     renderStateCommandBuffer :: Vk.CommandBuffer,
+    renderStateVertex :: TypedBuffer (V2 Float),
+    renderStateIndex :: TypedBuffer (V3 Word32),
     renderStateScreenDS :: Vk.DescriptorSet,
-    renderStateUniform :: TypedBuffer (V2 Float),
+    renderStateScreenUniform :: TypedBuffer (V2 Float),
+    renderStatePatternDS :: Vk.DescriptorSet,
+    renderStatePatternUniform :: TypedBuffer (),
     renderStateSemaphore :: Vk.Semaphore,
     renderStateFence :: Vk.Fence
 }
@@ -54,34 +112,59 @@ newRenderState Renderer {..} = do
         }
     let renderStateCommandBuffer = V.head commandBuffers
 
+
+    renderStateVertex <- newTypedBufferF Renderer {..}
+        Vk.BUFFER_USAGE_VERTEX_BUFFER_BIT
+        [V2 0 0, V2 200 0, V2 200 200, V2 0 200]
+
+    renderStateIndex <- newTypedBufferF Renderer {..}
+        Vk.BUFFER_USAGE_INDEX_BUFFER_BIT
+        [V3 0 1 2, V3 0 2 3]
+
     descriptorSets <- Vk.allocateDescriptorSets
         environmentDevice
         Vk.zero {
             Vk.descriptorPool = rendererDescriptorPool,
-            Vk.setLayouts = V.singleton rendererScreenDSLayout
+            Vk.setLayouts = V.fromList [ rendererScreenDSLayout, rendererPatternDSLayout ]
         }
-    let renderStateScreenDS = V.head descriptorSets
+    let [renderStateScreenDS, renderStatePatternDS] = V.toList descriptorSets
 
-    renderStateUniform <- newTypedBufferN Renderer {..} Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 1
+    renderStateScreenUniform <- newTypedBufferN Renderer {..} Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 1
+    renderStatePatternUniform <- newTypedBufferSized Renderer {..} Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 64
     renderStateSemaphore <- Vk.createSemaphore environmentDevice Vk.zero Nothing
     renderStateFence <- Vk.createFence environmentDevice Vk.zero Nothing
 
     Vk.updateDescriptorSets
         environmentDevice
         -- writes
-        (V.singleton $ Vk.SomeStruct Vk.zero {
-            Vk.next = (),
-            Vk.dstSet = renderStateScreenDS,
-            Vk.dstBinding = 0,
-            Vk.dstArrayElement = 0,
-            Vk.descriptorCount = 1,
-            Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            Vk.bufferInfo = V.singleton $ Vk.zero {
-                Vk.buffer = typedBufferObject renderStateUniform,
-                Vk.offset = 0,
-                Vk.range = Vk.WHOLE_SIZE
+        (V.fromList [
+            Vk.SomeStruct Vk.zero {
+                Vk.next = (),
+                Vk.dstSet = renderStateScreenDS,
+                Vk.dstBinding = 0,
+                Vk.dstArrayElement = 0,
+                Vk.descriptorCount = 1,
+                Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                Vk.bufferInfo = V.singleton $ Vk.zero {
+                    Vk.buffer = typedBufferObject renderStateScreenUniform,
+                    Vk.offset = 0,
+                    Vk.range = Vk.WHOLE_SIZE
+                }
+            },
+            Vk.SomeStruct Vk.zero {
+                Vk.next = (),
+                Vk.dstSet = renderStatePatternDS,
+                Vk.dstBinding = 0,
+                Vk.dstArrayElement = 0,
+                Vk.descriptorCount = 1,
+                Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                Vk.bufferInfo = V.singleton $ Vk.zero {
+                    Vk.buffer = typedBufferObject renderStatePatternUniform,
+                    Vk.offset = 0,
+                    Vk.range = Vk.WHOLE_SIZE
+                }
             }
-        } )
+        ])
         -- copies
         V.empty
 
@@ -92,8 +175,11 @@ freeRenderState Renderer {..} RenderState {..} = do
     let Environment {..} = rendererEnvironment
     Vk.destroyFence environmentDevice renderStateFence Nothing
     Vk.destroySemaphore environmentDevice renderStateSemaphore Nothing
-    freeTypedBuffer Renderer {..} renderStateUniform
-    Vk.freeDescriptorSets environmentDevice rendererDescriptorPool (V.singleton renderStateScreenDS)
+    freeTypedBuffer Renderer {..} renderStateScreenUniform
+    freeTypedBuffer Renderer {..} renderStatePatternUniform
+    Vk.freeDescriptorSets environmentDevice rendererDescriptorPool (V.fromList [renderStateScreenDS, renderStatePatternDS])
+    freeTypedBuffer Renderer {..} renderStateIndex
+    freeTypedBuffer Renderer {..} renderStateVertex
     Vk.freeCommandBuffers environmentDevice rendererCommandPool (V.singleton renderStateCommandBuffer)
 
 
@@ -112,14 +198,20 @@ freeRenderStateSwapchain Renderer {..} RenderStateSwapchain {..} = do
     freeRenderState Renderer {..} renderStateBase
 
 
-setRenderStateTargetBase :: (MonadIO m) => Renderer -> RenderState -> Preparation -> Int -> Int -> BaseRenderTarget -> m ()
-setRenderStateTargetBase Renderer {..} RenderState {..} Preparation {..} width height BaseRenderTarget {..} = do
+setRenderStateTargetBase :: (MonadIO m) => Renderer -> RenderState -> Pattern -> Int -> Int -> BaseRenderTarget -> m ()
+setRenderStateTargetBase Renderer {..} RenderState {..} pattern width height BaseRenderTarget {..} = do
     let renderArea = Vk.Rect2D {
         Vk.offset = Vk.Offset2D 0 0,
         Vk.extent = Vk.Extent2D (fromIntegral width) (fromIntegral height)
     }
 
-    writeTypedBuffer1 Renderer {..} renderStateUniform (fromIntegral <$> V2 width height)
+    writeTypedBuffer1 Renderer {..} renderStateScreenUniform (fromIntegral <$> V2 width height)
+    ptr <- mapTypedBuffer Renderer {..} renderStatePatternUniform
+    liftIO $ case pattern of
+        PatternSolid color -> poke (castPtr ptr) color
+        PatternLinear ps pe cs ce -> poke (castPtr ptr) (PreparationLinear ps pe cs ce)
+        PatternRadial ps r cs ce -> poke (castPtr ptr) (PreparationRadial ps r cs ce)
+    unmapTypedBuffer Renderer {..} renderStatePatternUniform
 
     Vk.resetCommandBuffer renderStateCommandBuffer zeroBits
     Vk.useCommandBuffer
@@ -158,10 +250,37 @@ setRenderStateTargetBase Renderer {..} RenderState {..} Preparation {..} width h
                 (V.singleton renderStateScreenDS)
                 (V.empty)
 
-            recordPreparationCommand Renderer {..} Preparation {..} renderStateCommandBuffer
+            Vk.cmdBindPipeline
+                renderStateCommandBuffer
+                Vk.PIPELINE_BIND_POINT_GRAPHICS
+                (case pattern of
+                    PatternSolid _ -> rendererPatternSolid
+                    PatternLinear {} -> rendererPatternLinear
+                    PatternRadial {} -> rendererPatternRadial
+                )
 
-renderRenderStateTarget :: (MonadIO m) => Renderer -> RenderState -> Preparation -> RenderTarget -> Maybe Vk.Semaphore -> m (m ())
-renderRenderStateTarget Renderer {..} RenderState {..} Preparation {..} RenderTarget {..} wait = do
+            Vk.cmdBindIndexBuffer
+                renderStateCommandBuffer
+                (typedBufferObject renderStateIndex) 0 Vk.INDEX_TYPE_UINT32
+
+            Vk.cmdBindVertexBuffers
+                renderStateCommandBuffer
+                0
+                (V.singleton $ typedBufferObject renderStateVertex)
+                (V.singleton 0)
+
+            Vk.cmdBindDescriptorSets
+                renderStateCommandBuffer
+                Vk.PIPELINE_BIND_POINT_GRAPHICS
+                rendererPatternLayout
+                1
+                (V.singleton renderStatePatternDS)
+                (V.empty)
+
+            Vk.cmdDrawIndexed renderStateCommandBuffer 6 1 0 0 0
+
+renderRenderStateTarget :: (MonadIO m) => Renderer -> RenderState -> Pattern -> RenderTarget -> Maybe Vk.Semaphore -> m (m ())
+renderRenderStateTarget Renderer {..} RenderState {..} pattern RenderTarget {..} wait = do
     let Environment {..} = rendererEnvironment
     let Vk.Extent2D {
         Vk.width = width,
@@ -171,7 +290,7 @@ renderRenderStateTarget Renderer {..} RenderState {..} Preparation {..} RenderTa
     setRenderStateTargetBase
         Renderer {..}
         RenderState {..}
-        Preparation {..}
+        pattern
         (fromIntegral width)
         (fromIntegral height)
         renderTargetBase
@@ -193,8 +312,8 @@ renderRenderStateTarget Renderer {..} RenderState {..} Preparation {..} RenderTa
 
     pure $ void $ Vk.waitForFences environmentDevice (V.singleton renderStateFence) True maxBound
 
-renderRenderStateTargetSwapchain :: (MonadIO m) => Renderer -> RenderStateSwapchain -> Preparation -> SwapchainRenderTarget -> m (Int, m ())
-renderRenderStateTargetSwapchain Renderer {..} RenderStateSwapchain {..} Preparation {..} SwapchainRenderTarget {..} = do
+renderRenderStateTargetSwapchain :: (MonadIO m) => Renderer -> RenderStateSwapchain -> Pattern -> SwapchainRenderTarget -> m (Int, m ())
+renderRenderStateTargetSwapchain Renderer {..} RenderStateSwapchain {..} pattern SwapchainRenderTarget {..} = do
     let Environment {..} = rendererEnvironment
         RenderState {..} = renderStateBase
     let Vk.Extent2D {
@@ -214,7 +333,7 @@ renderRenderStateTargetSwapchain Renderer {..} RenderStateSwapchain {..} Prepara
     setRenderStateTargetBase
         Renderer {..}
         RenderState {..}
-        Preparation {..}
+        pattern
         (fromIntegral width) (fromIntegral height)
         (renderTargetBase ! index)
 

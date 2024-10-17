@@ -78,6 +78,7 @@ executable pizza-preview-window
                       vulkan,
                       vulkan-utils,
                       VulkanMemoryAllocator,
+                      time,
                       pizza
 
     -- Directories containing source files.

@@ -38,6 +38,9 @@ import qualified VulkanMemoryAllocator as Vma
 
 import qualified Graphics.Pizza as Pz
 
+-- time
+import Data.Time.Clock
+
 data DeviceSelection = DeviceSelection {
     devSelectionScore :: Int,
     devSelectionGraphicQueueFamilyIndex :: Int
@@ -238,9 +241,6 @@ main = do
     } = surfaceStateFormat surfaceState
 
     renderer <- Pz.newRenderer environment imageFormat Vk.IMAGE_LAYOUT_PRESENT_SRC_KHR
-    --preparation <- Pz.newPreparation renderer (Pz.PatternSolid (V4 1 1 0 1))
-    --preparation <- Pz.newPreparation renderer (Pz.PatternLinear (V2 0 0) (V2 200 200) (V4 1 0 0 1) (V4 0 0 1 1))
-    preparation <- Pz.newPreparation renderer (Pz.PatternRadial (V2 100 100) 100 (V4 1 0 0 1) (V4 0 0 0 1))
     renderTarget <- Pz.newSwapchainRenderTarget renderer swapchain width height imageFormat
     renderState <- Pz.newRenderStateSwapchain renderer
 
@@ -248,16 +248,23 @@ main = do
     GLFW.setWindowCloseCallback win $ Just (\_ -> writeIORef keepAlive False)
     GLFW.showWindow win
 
+    timeStart <- getCurrentTime
     fix $ \recur -> do
-        (_, w) <-Pz.renderRenderStateTargetSwapchain renderer renderState preparation renderTarget
+        timeNow <- getCurrentTime
+        let timeDiff = realToFrac $ diffUTCTime timeNow timeStart
+        let coord = V2 (100 + 100 * cos timeDiff) (100 + 100 * sin timeDiff)
+        let pattern = (Pz.PatternRadial coord 100 (V4 1 0 0 1) (V4 0 0 0 1))
+
+        (_, w) <-Pz.renderRenderStateTargetSwapchain renderer renderState pattern renderTarget
         w
-        Vk.deviceWaitIdle (Pz.environmentDevice environment)
+
         a <- readIORef keepAlive
-        when a (GLFW.waitEvents >> recur)
+        when a (GLFW.pollEvents >> recur)
+
+    Vk.deviceWaitIdle (Pz.environmentDevice environment)
 
     Pz.freeRenderStateSwapchain renderer renderState
     Pz.freeSwapchainRenderTarget renderer renderTarget
-    Pz.freePreparation renderer preparation
     Pz.freeRenderer renderer
     Vk.destroySwapchainKHR (Pz.environmentDevice environment) swapchain Nothing
     destroySurfaceState environment surfaceState
