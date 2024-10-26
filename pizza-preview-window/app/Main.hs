@@ -19,6 +19,8 @@ import Foreign.Marshal.Alloc
 
 import System.Exit
 
+import Numeric
+
 import Linear
 
 import qualified Data.ByteString as BS
@@ -249,17 +251,28 @@ main = do
     GLFW.showWindow win
 
     timeStart <- getCurrentTime
-    fix $ \recur -> do
-        timeNow <- getCurrentTime
-        let timeDiff = realToFrac $ diffUTCTime timeNow timeStart
-        let coord = V2 (100 + 100 * cos timeDiff) (100 + 100 * sin timeDiff)
-        let pattern = (Pz.PatternRadial coord 100 (V4 1 0 0 1) (V4 0 0 0 1))
 
-        (_, w) <-Pz.renderRenderStateTargetSwapchain renderer renderState pattern renderTarget
-        w
+    let loop recur timePrevFrame = do
+            timeFrameStart <- getCurrentTime
+            let timeDiff = realToFrac $ diffUTCTime timeFrameStart timeStart
+            let theta = timeDiff * 5
+            let coord = V2 (100 + 100 * cos theta) (100 + 100 * sin theta)
+            let pattern = Pz.PatternRadial coord 100 (V4 1 0 0 1) (V4 0 0 0 1)
 
-        a <- readIORef keepAlive
-        when a (GLFW.pollEvents >> recur)
+            (_, presentWait) <-Pz.renderRenderStateTargetSwapchain renderer renderState pattern renderTarget
+
+            timeFrameDone <- getCurrentTime
+
+            presentWait
+
+            let frameInterval = realToFrac $ diffUTCTime timeFrameStart timePrevFrame :: Float
+            let renderInterval = realToFrac $ diffUTCTime timeFrameDone timeFrameStart :: Float
+            putStrLn $ "FRAME: " ++ showFFloat (Just 5) frameInterval "" ++ " / Freq: " ++ show (recip frameInterval)
+            putStrLn $ "RENDER: " ++ showFFloat (Just 5) renderInterval "" ++ " / Freq: " ++ show (recip renderInterval)
+
+            a <- readIORef keepAlive
+            when a (GLFW.pollEvents >> recur timeFrameStart)
+    fix loop timeStart
 
     Vk.deviceWaitIdle (Pz.environmentDevice environment)
 
@@ -274,5 +287,6 @@ main = do
     Pz.freeEnvironment environment
 
     GLFW.terminate
+
 
 
