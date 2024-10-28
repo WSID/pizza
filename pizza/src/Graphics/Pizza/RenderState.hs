@@ -12,6 +12,7 @@ import Data.Word
 
 import Foreign.Ptr
 import Foreign.Storable
+import Foreign.Marshal.Array
 
 -- linear
 import Linear
@@ -113,13 +114,11 @@ newRenderState Renderer {..} = do
     let renderStateCommandBuffer = V.head commandBuffers
 
 
-    renderStateVertex <- newTypedBufferF Renderer {..}
-        Vk.BUFFER_USAGE_VERTEX_BUFFER_BIT
-        [V2 0 0, V2 200 0, V2 200 200, V2 0 200]
+    renderStateVertex <- newTypedBufferN Renderer {..}
+        Vk.BUFFER_USAGE_VERTEX_BUFFER_BIT 1024
 
-    renderStateIndex <- newTypedBufferF Renderer {..}
-        Vk.BUFFER_USAGE_INDEX_BUFFER_BIT
-        [V3 0 1 2, V3 0 2 3]
+    renderStateIndex <- newTypedBufferN Renderer {..}
+        Vk.BUFFER_USAGE_INDEX_BUFFER_BIT 1024
 
     descriptorSets <- Vk.allocateDescriptorSets
         environmentDevice
@@ -198,12 +197,32 @@ freeRenderStateSwapchain Renderer {..} RenderStateSwapchain {..} = do
     freeRenderState Renderer {..} renderStateBase
 
 
-setRenderStateTargetBase :: (MonadIO m) => Renderer -> RenderState -> Pattern -> Int -> Int -> BaseRenderTarget -> m ()
-setRenderStateTargetBase Renderer {..} RenderState {..} pattern width height BaseRenderTarget {..} = do
+setRenderStateTargetBase :: (MonadIO m) => Renderer -> RenderState -> Graphics -> Int -> Int -> BaseRenderTarget -> m ()
+setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height BaseRenderTarget {..} = do
+    let Graphics path pattern = graphics
     let renderArea = Vk.Rect2D {
         Vk.offset = Vk.Offset2D 0 0,
         Vk.extent = Vk.Extent2D (fromIntegral width) (fromIntegral height)
     }
+
+    -- Vertex
+
+    let Path vertices _ = path
+
+    vptr <- mapTypedBuffer Renderer {..} renderStateVertex
+    liftIO $ pokeArray vptr vertices
+    unmapTypedBuffer Renderer {..} renderStateVertex
+
+    -- Indices
+
+    let (indicesFirst: indicesSnd: indicesRest) = zipWith const [0 .. ] vertices
+    let indices = zipWith (\a b -> V3 indicesFirst a b) (indicesSnd: indicesRest) indicesRest
+
+    iptr <- mapTypedBuffer Renderer {..} renderStateIndex
+    liftIO $ pokeArray iptr indices
+    unmapTypedBuffer Renderer {..} renderStateIndex
+
+    -- Pattern Uniforms
 
     writeTypedBuffer1 Renderer {..} renderStateScreenUniform (fromIntegral <$> V2 width height)
     ptr <- mapTypedBuffer Renderer {..} renderStatePatternUniform
@@ -277,10 +296,10 @@ setRenderStateTargetBase Renderer {..} RenderState {..} pattern width height Bas
                 (V.singleton renderStatePatternDS)
                 (V.empty)
 
-            Vk.cmdDrawIndexed renderStateCommandBuffer 6 1 0 0 0
+            Vk.cmdDrawIndexed renderStateCommandBuffer (3 * (fromIntegral $ length indices)) 1 0 0 0
 
-renderRenderStateTarget :: (MonadIO m) => Renderer -> RenderState -> Pattern -> RenderTarget -> Maybe Vk.Semaphore -> m (m ())
-renderRenderStateTarget Renderer {..} RenderState {..} pattern RenderTarget {..} wait = do
+renderRenderStateTarget :: (MonadIO m) => Renderer -> RenderState -> Graphics -> RenderTarget -> Maybe Vk.Semaphore -> m (m ())
+renderRenderStateTarget Renderer {..} RenderState {..} graphics RenderTarget {..} wait = do
     let Environment {..} = rendererEnvironment
     let Vk.Extent2D {
         Vk.width = width,
@@ -290,7 +309,7 @@ renderRenderStateTarget Renderer {..} RenderState {..} pattern RenderTarget {..}
     setRenderStateTargetBase
         Renderer {..}
         RenderState {..}
-        pattern
+        graphics
         (fromIntegral width)
         (fromIntegral height)
         renderTargetBase
@@ -312,8 +331,8 @@ renderRenderStateTarget Renderer {..} RenderState {..} pattern RenderTarget {..}
 
     pure $ void $ Vk.waitForFences environmentDevice (V.singleton renderStateFence) True maxBound
 
-renderRenderStateTargetSwapchain :: (MonadIO m) => Renderer -> RenderStateSwapchain -> Pattern -> SwapchainRenderTarget -> m (Int, m ())
-renderRenderStateTargetSwapchain Renderer {..} RenderStateSwapchain {..} pattern SwapchainRenderTarget {..} = do
+renderRenderStateTargetSwapchain :: (MonadIO m) => Renderer -> RenderStateSwapchain -> Graphics -> SwapchainRenderTarget -> m (Int, m ())
+renderRenderStateTargetSwapchain Renderer {..} RenderStateSwapchain {..} graphics SwapchainRenderTarget {..} = do
     let Environment {..} = rendererEnvironment
         RenderState {..} = renderStateBase
     let Vk.Extent2D {
@@ -333,7 +352,7 @@ renderRenderStateTargetSwapchain Renderer {..} RenderStateSwapchain {..} pattern
     setRenderStateTargetBase
         Renderer {..}
         RenderState {..}
-        pattern
+        graphics
         (fromIntegral width) (fromIntegral height)
         (renderTargetBase ! index)
 

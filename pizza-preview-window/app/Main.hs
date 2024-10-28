@@ -255,11 +255,18 @@ main = do
     let loop recur timePrevFrame = do
             timeFrameStart <- getCurrentTime
             let timeDiff = realToFrac $ diffUTCTime timeFrameStart timeStart
-            let theta = timeDiff * 5
-            let coord = V2 (100 + 100 * cos theta) (100 + 100 * sin theta)
-            let pattern = Pz.PatternRadial coord 100 (V4 1 0 0 1) (V4 0 0 0 1)
+            let theta = timeDiff * 2
+            let coord = V2 (200 + 200 * cos theta) (200 + 200 * sin theta)
+            let pattern = Pz.PatternRadial coord 300 (V4 1 1 0 1) (V4 0 1 1 1)
+            let path = [
+                        V2 0 0,
+                        V2 300 50,
+                        V2 400 400,
+                        V2 50 300
+                    ]
+            let graphics = Pz.Graphics (Pz.Path path True) pattern
 
-            (_, presentWait) <-Pz.renderRenderStateTargetSwapchain renderer renderState pattern renderTarget
+            (_, presentWait) <-Pz.renderRenderStateTargetSwapchain renderer renderState graphics renderTarget
 
             timeFrameDone <- getCurrentTime
 

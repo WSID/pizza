@@ -8,6 +8,7 @@ module Main where
 
 -- base
 import Data.Bits
+import Data.Bool
 import Data.Word
 import Data.Maybe
 import Data.Function ((&))
@@ -71,6 +72,10 @@ main = do
                     "Center Red Black" ~: testPatterns (PatternRadial (V2 100 100) 100 (V4 1 0 0 1) (V4 0 0 0 1)),
                     "Left Up Blue Green" ~: testPatterns (PatternRadial (V2 0 0) 200 (V4 0 0 1 1) (V4 1 1 1 1))
                 ]
+            ],
+            "Paths" ~: TestList [
+                "Half" ~: testPath pathHalf maskHalf,
+                "Diamond" ~: testPath pathDiamond maskDiamond
             ]
         ]
 
@@ -80,6 +85,26 @@ coordinates = do
     x <- [0, 1 .. 199]
     pure $ V2 x y
 
+pathFull :: Graphics.Pizza.Path
+pathFull = Graphics.Pizza.Path [V2 0 0, V2 200 0, V2 200 200, V2 0 200] True
+
+pathHalf :: Graphics.Pizza.Path
+pathHalf = Graphics.Pizza.Path [V2 0 0, V2 200 0, V2 0 200] True
+
+pathDiamond :: Graphics.Pizza.Path
+pathDiamond = Graphics.Pizza.Path [V2 100 0, V2 200 100, V2 100 200, V2 0 100] True
+
+maskHalf :: [Bool]
+maskHalf = contains <$> coordinates
+  where
+    contains (V2 x y) = y <= (200 - x)
+
+maskDiamond :: [Bool]
+maskDiamond = contains <$> coordinates
+  where
+    contains (V2 x y)
+        | x < 100   = (100 - x <= y) && (y <= 100 + x)
+        | otherwise = (x - 100 <= y) && (y <= 300 - x)
 
 convertColor :: V4 Float -> V4 Word8
 convertColor c = floor . min 255 . (* 256) <$> c
@@ -122,12 +147,20 @@ checkImages a b = do
 
 testPatterns :: Pattern -> Assertion
 testPatterns pattern = do
-    actual <- makeRenderedImage pattern
+    let graphics = Graphics pathFull pattern
+    actual <- makeRenderedImage graphics
     let expected = makeExpectedImage pattern
     assert $ checkImages actual expected
 
-makeRenderedImage :: Pattern -> IO [V4 Word8]
-makeRenderedImage pattern = evalContT do
+testPath :: Graphics.Pizza.Path -> [Bool] -> Assertion
+testPath path mask = do
+    let graphics = Graphics path (PatternSolid (V4 1 1 1 1))
+    actual <- makeRenderedImage graphics
+    let expected = bool (V4 0 0 0 255) (V4 255 255 255 255) <$> mask
+    assert $ checkImages actual expected
+
+makeRenderedImage :: Graphics -> IO [V4 Word8]
+makeRenderedImage graphics = evalContT do
     -- Make use of ContT, with bracket.
     -- This will make such items to be freed at out of 'scope'.
 
@@ -161,10 +194,6 @@ makeRenderedImage pattern = evalContT do
     renderTarget <- ContT $ bracket
         (newRenderTarget renderer 200 200 format)
         (freeRenderTarget renderer)
-
-    preparation <- ContT $ bracket
-        (newPreparation renderer pattern)
-        (freePreparation renderer)
 
     liftIO $ putStrLn "Pizza Preparation"
 
@@ -212,7 +241,7 @@ makeRenderedImage pattern = evalContT do
 
     transferFence <- ContT $ Vk.withFence environmentDevice Vk.zero Nothing bracket
 
-    renderRenderStateTarget renderer renderState preparation renderTarget Nothing
+    renderRenderStateTarget renderer renderState graphics renderTarget Nothing
 
     Vk.queueSubmit environmentGraphicsQueue
         (V.singleton $ Vk.SomeStruct Vk.zero {
