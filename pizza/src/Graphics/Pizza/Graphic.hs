@@ -5,6 +5,8 @@ import Control.Applicative
 -- linear
 import Linear
 
+import Graphics.Pizza.Internal.Util
+
 data Graphics = Graphics Path Pattern
 
 data Pattern =
@@ -15,16 +17,71 @@ data Pattern =
 
 data AABB = AABB !(V2 Float) !(V2 Float)
 
-data Path = Path [V2 Float] Bool
+data PathPart
+    = PathPoint (V2 Float)
+    | PathCurve (Float -> V2 Float)
+
+newtype Path = Path [PathPart]
+
+data PathSplitOptions = PathSplitOptions {
+    maxDistance :: Float,
+    maxSideDist :: Float
+}
 
 -- Functions
 
-pathBound :: Path -> Maybe AABB
-pathBound (Path [] _) = Nothing
-pathBound (Path v _) = Just $ AABB lt rb
+continueSplitPoint :: PathSplitOptions -> V2 Float -> V2 Float -> V2 Float -> Bool
+continueSplitPoint (PathSplitOptions maxDist maxSideDist) a b c = metDist || metSideDist
   where
-    lt = foldr1 (liftA2 min) v
-    rb = foldr1 (liftA2 max) v
+    displacement = c - a
+    distance = norm displacement
+    sideDist = abs (crossZ (c - b) displacement)
 
-midPoint :: AABB -> V2 Float
-midPoint (AABB lt rb) = lerp 0.5 lt rb
+    metDist = maxDist < distance
+    metSideDist = maxSideDist < sideDist
+
+
+pathPartToPoints :: PathPart -> [V2 Float]
+pathPartToPoints p = pathPartToPoints' (PathSplitOptions 10 2) p
+
+pathPartToPoints' :: PathSplitOptions -> PathPart -> [V2 Float]
+pathPartToPoints' _ (PathPoint a) = [a]
+pathPartToPoints' opt (PathCurve f) = [f 0] ++ go 0 (f 0) 1 (f 1) ++ [f 1]
+  where
+    go start sv end ev
+        | continue = go start sv m mv ++ [mv] ++ go m mv end ev
+        | otherwise = [mv]
+      where
+        m = (end + start) * 0.5
+        mv = f m
+        continue = continueSplitPoint opt sv mv ev
+
+pathToPoints :: Path -> [V2 Float]
+pathToPoints (Path p) = p >>= pathPartToPoints
+
+-- Utility
+
+rangeDivList :: Int -> [Float]
+rangeDivList n = fmap (\i -> fromIntegral i / nf) [0 .. n]
+    where
+        nf = fromIntegral n
+
+-- Curves
+
+bezier :: V2 Float -> [V2 Float] -> V2 Float -> PathPart
+bezier start controls end = PathCurve $ \t -> runVPoly t (bezierPoly start controls end)
+
+arc :: V2 Float -> Float -> Float -> Float -> PathPart
+arc center radius start end = PathCurve $ \t -> center + angle (start + (end - start) * t) ^* radius
+
+
+-- Path to points
+
+bezierPoly :: V2 Float -> [V2 Float] -> V2 Float -> VPoly
+bezierPoly start [] end = VPoly [start, end - start]
+bezierPoly start controls end = result
+    where
+        a = bezierPoly start (init controls) (last controls)
+        b = bezierPoly (head controls) (tail controls) end
+        VPoly bf = subVPoly b a
+        result = addVPoly a (VPoly (zero : bf))

@@ -208,7 +208,7 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
 
     -- Vertex
 
-    let Path vertices _ = path
+    let vertices = pathToPoints path
 
     vptr <- mapTypedBuffer rendererEnvironment renderStateVertex
     liftIO $ pokeArray vptr vertices

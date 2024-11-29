@@ -213,6 +213,40 @@ createSwapchain Pz.Environment {..} SurfaceState {..} width height = do
 
     Vk.createSwapchainKHR environmentDevice swapchainCreateInfo Nothing
 
+makeGraphic :: Float -> Pz.Graphics
+makeGraphic time = Pz.Graphics
+    (Pz.Path
+        [
+            Pz.bezier
+                (V2 0 200)
+                [
+                    V2 0 (0 - animValue1),
+                    V2 400 (400 + animValue1)
+                ]
+                (V2 400 200),
+            Pz.arc
+                (V2 (300 + animValue2) 200)
+                (100 - animValue2)
+                0
+                (negate pi),
+            Pz.arc
+                (V2 (100 + animValue2) 200)
+                (100 + animValue2)
+                0
+                pi
+        ]
+    )
+    (Pz.PatternRadial
+        (V2 (200 + 400 * cos theta) (400 + 400 * sin theta))
+        400
+        (V4 1 1 0 1)
+        (V4 0 1 1 1)
+    )
+  where
+    theta = time * 2
+    animValue1 = 400 * cos theta
+    animValue2 = 100 * sin theta
+
 main :: IO ()
 main = do
     initSucc <- GLFW.init
@@ -255,18 +289,7 @@ main = do
     let loop recur timePrevFrame = do
             timeFrameStart <- getCurrentTime
             let timeDiff = realToFrac $ diffUTCTime timeFrameStart timeStart
-            let theta = timeDiff * 2
-            let coord = V2 (200 + 200 * cos theta) (200 + 200 * sin theta)
-            let pattern = Pz.PatternRadial coord 300 (V4 1 1 0 1) (V4 0 1 1 1)
-            let path = [
-                        V2 0 200,
-                        V2 100 0,
-                        V2 300 400,
-                        V2 400 200,
-                        V2 300 0,
-                        V2 100 400
-                    ]
-            let graphics = Pz.Graphics (Pz.Path path True) pattern
+            let graphics = makeGraphic timeDiff
 
             (_, presentWait) <-Pz.renderRenderStateTargetSwapchain renderer renderState graphics renderTarget
 
@@ -276,6 +299,7 @@ main = do
 
             let frameInterval = realToFrac $ diffUTCTime timeFrameStart timePrevFrame :: Float
             let renderInterval = realToFrac $ diffUTCTime timeFrameDone timeFrameStart :: Float
+
             putStrLn $ "FRAME: " ++ showFFloat (Just 5) frameInterval "" ++ " / Freq: " ++ show (recip frameInterval)
             putStrLn $ "RENDER: " ++ showFFloat (Just 5) renderInterval "" ++ " / Freq: " ++ show (recip renderInterval)
 

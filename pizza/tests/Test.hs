@@ -87,16 +87,23 @@ coordinates = do
     pure $ V2 x y
 
 pathFull :: Graphics.Pizza.Path
-pathFull = Graphics.Pizza.Path [V2 0 0, V2 200 0, V2 200 200, V2 0 200] True
+pathFull = Graphics.Pizza.Path [PathPoint (V2 0 0), PathPoint (V2 200 0), PathPoint (V2 200 200), PathPoint (V2 0 200)]
 
 pathHalf :: Graphics.Pizza.Path
-pathHalf = Graphics.Pizza.Path [V2 0 0, V2 200 0, V2 0 200] True
+pathHalf = Graphics.Pizza.Path [PathPoint (V2 0 0), PathPoint (V2 200 0), PathPoint (V2 0 200)]
 
 pathDiamond :: Graphics.Pizza.Path
-pathDiamond = Graphics.Pizza.Path [V2 100 0, V2 200 100, V2 100 200, V2 0 100] True
+pathDiamond = Graphics.Pizza.Path [PathPoint (V2 100 0), PathPoint (V2 200 100), PathPoint (V2 100 200), PathPoint (V2 0 100)]
 
 pathDoubleDiamond :: Graphics.Pizza.Path
-pathDoubleDiamond = Graphics.Pizza.Path [V2 0 100, V2 50 0, V2 150 200, V2 200 100, V2 150 0, V2 50 200] True
+pathDoubleDiamond = Graphics.Pizza.Path [
+        PathPoint (V2 0 100),
+        PathPoint (V2 50 0),
+        PathPoint (V2 150 200),
+        PathPoint (V2 200 100),
+        PathPoint (V2 150 0),
+        PathPoint (V2 50 200)
+    ]
 
 maskHalf :: [Bool]
 maskHalf = contains <$> coordinates
