@@ -67,7 +67,8 @@ library
     	Graphics.Pizza.Renderer,
     	Graphics.Pizza.RenderState,
     	Graphics.Pizza.RenderTarget,
-    	Graphics.Pizza.Internal.TypedBuffer
+    	Graphics.Pizza.Internal.TypedBuffer,
+    	Graphics.Pizza.Internal.Util
 
     -- Modules included in this library but not exported.
     -- other-modules:
