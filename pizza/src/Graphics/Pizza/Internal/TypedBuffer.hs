@@ -26,8 +26,7 @@ import qualified VulkanMemoryAllocator as Vma
 
 
 -- pizza
-import Graphics.Pizza.Renderer
-
+import Graphics.Pizza.Environment
 
 -- | Typed Buffer
 data TypedBuffer a = TypedBuffer {

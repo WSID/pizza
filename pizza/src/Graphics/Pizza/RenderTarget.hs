@@ -21,6 +21,7 @@ import qualified Vulkan.Zero as Vk
 import qualified VulkanMemoryAllocator as Vma
 
 -- pizza
+import Graphics.Pizza.Environment
 import Graphics.Pizza.Renderer
 
 data BaseRenderTarget = BaseRenderTarget {

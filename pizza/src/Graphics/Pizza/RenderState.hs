@@ -27,6 +27,7 @@ import qualified Vulkan.Zero as Vk
 import qualified Vulkan.CStruct.Extends as Vk
 
 -- pizza
+import Graphics.Pizza.Environment
 import Graphics.Pizza.Graphic
 import Graphics.Pizza.Renderer
 import Graphics.Pizza.RenderTarget
