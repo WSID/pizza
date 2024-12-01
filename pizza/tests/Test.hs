@@ -75,7 +75,8 @@ main = do
             ],
             "Paths" ~: TestList [
                 "Half" ~: testPath pathHalf maskHalf,
-                "Diamond" ~: testPath pathDiamond maskDiamond
+                "Diamond" ~: testPath pathDiamond maskDiamond,
+                "Double Diamond" ~: testPath pathDoubleDiamond maskDoubleDiamond
             ]
         ]
 
@@ -94,6 +95,9 @@ pathHalf = Graphics.Pizza.Path [V2 0 0, V2 200 0, V2 0 200] True
 pathDiamond :: Graphics.Pizza.Path
 pathDiamond = Graphics.Pizza.Path [V2 100 0, V2 200 100, V2 100 200, V2 0 100] True
 
+pathDoubleDiamond :: Graphics.Pizza.Path
+pathDoubleDiamond = Graphics.Pizza.Path [V2 0 100, V2 50 0, V2 150 200, V2 200 100, V2 150 0, V2 50 200] True
+
 maskHalf :: [Bool]
 maskHalf = contains <$> coordinates
   where
@@ -105,6 +109,15 @@ maskDiamond = contains <$> coordinates
     contains (V2 x y)
         | x < 100   = (100 - x <= y) && (y <= 100 + x)
         | otherwise = (x - 100 <= y) && (y <= 300 - x)
+
+maskDoubleDiamond :: [Bool]
+maskDoubleDiamond = contains <$> coordinates
+  where
+    contains (V2 x y)
+        | x < 50    = (100 - 2 * x <= y) && (y <= 100 + 2 * x)
+        | x < 100   = (2 * x - 100 <= y) && (y <= 300 - 2 * x)
+        | x < 150   = (300 - 2 * x <= y) && (y <= (-100) + 2 * x)
+        | otherwise = (2 * x - 300 <= y) && (y <= 500 - 2 * x)
 
 convertColor :: V4 Float -> V4 Word8
 convertColor c = floor . min 255 . (* 256) <$> c

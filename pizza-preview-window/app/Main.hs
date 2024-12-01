@@ -259,10 +259,12 @@ main = do
             let coord = V2 (200 + 200 * cos theta) (200 + 200 * sin theta)
             let pattern = Pz.PatternRadial coord 300 (V4 1 1 0 1) (V4 0 1 1 1)
             let path = [
-                        V2 0 0,
-                        V2 300 50,
-                        V2 400 400,
-                        V2 50 300
+                        V2 0 200,
+                        V2 100 0,
+                        V2 300 400,
+                        V2 400 200,
+                        V2 300 0,
+                        V2 100 400
                     ]
             let graphics = Pz.Graphics (Pz.Path path True) pattern
 
