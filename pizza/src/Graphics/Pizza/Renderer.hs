@@ -256,21 +256,39 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
     rendererRenderPass <- Vk.createRenderPass
         environmentDevice
         Vk.zero {   -- Vk.RenderPassCreateInfo
-            Vk.attachments = V.singleton (Vk.zero :: Vk.AttachmentDescription) {
-                Vk.format = rendererImageFormat,
-                Vk.samples = Vk.SAMPLE_COUNT_1_BIT,
-                Vk.loadOp = Vk.ATTACHMENT_LOAD_OP_CLEAR,
-                Vk.storeOp = Vk.ATTACHMENT_STORE_OP_STORE,
-                Vk.stencilLoadOp = Vk.ATTACHMENT_LOAD_OP_DONT_CARE,
-                Vk.stencilStoreOp = Vk.ATTACHMENT_STORE_OP_DONT_CARE,
-                Vk.initialLayout = Vk.IMAGE_LAYOUT_UNDEFINED,
-                Vk.finalLayout = rendererImageLayout
-            },
+            Vk.attachments = V.fromList [
+                -- Color!
+                (Vk.zero :: Vk.AttachmentDescription) {
+                    Vk.format = rendererImageFormat,
+                    Vk.samples = Vk.SAMPLE_COUNT_1_BIT,
+                    Vk.loadOp = Vk.ATTACHMENT_LOAD_OP_CLEAR,
+                    Vk.storeOp = Vk.ATTACHMENT_STORE_OP_STORE,
+                    Vk.stencilLoadOp = Vk.ATTACHMENT_LOAD_OP_DONT_CARE,
+                    Vk.stencilStoreOp = Vk.ATTACHMENT_STORE_OP_DONT_CARE,
+                    Vk.initialLayout = Vk.IMAGE_LAYOUT_UNDEFINED,
+                    Vk.finalLayout = rendererImageLayout
+                },
+                -- Stencil
+                (Vk.zero :: Vk.AttachmentDescription) {
+                    Vk.format = Vk.FORMAT_S8_UINT,
+                    Vk.samples = Vk.SAMPLE_COUNT_1_BIT,
+                    Vk.loadOp = Vk.ATTACHMENT_LOAD_OP_DONT_CARE,
+                    Vk.storeOp = Vk.ATTACHMENT_STORE_OP_DONT_CARE,
+                    Vk.stencilLoadOp = Vk.ATTACHMENT_LOAD_OP_LOAD,
+                    Vk.stencilStoreOp = Vk.ATTACHMENT_STORE_OP_DONT_CARE,
+                    Vk.initialLayout = Vk.IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+                    Vk.finalLayout = Vk.IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                }
+            ],
             Vk.subpasses = V.singleton (Vk.zero :: Vk.SubpassDescription) {
                 Vk.pipelineBindPoint = Vk.PIPELINE_BIND_POINT_GRAPHICS,
                 Vk.colorAttachments = V.singleton Vk.AttachmentReference {
                     Vk.attachment = 0,
                     Vk.layout = Vk.IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+                },
+                Vk.depthStencilAttachment = Just Vk.AttachmentReference {
+                    Vk.attachment = 1,
+                    Vk.layout = Vk.IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
                 }
             },
             Vk.dependencies = V.singleton (Vk.zero :: Vk.SubpassDependency) {
@@ -359,7 +377,21 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
                 Vk.rasterizationSamples = Vk.SAMPLE_COUNT_1_BIT
             },
 
-            Vk.depthStencilState = Nothing,
+            -- Use even-odd rule here
+            -- Just check first bit only.
+            Vk.depthStencilState = Just Vk.zero {
+                Vk.stencilTestEnable = True,
+                Vk.front = Vk.zero {
+                    Vk.compareOp = Vk.COMPARE_OP_EQUAL,
+                    Vk.compareMask = 1,
+                    Vk.reference = 1
+                },
+                Vk.back = Vk.zero {
+                    Vk.compareOp = Vk.COMPARE_OP_EQUAL,
+                    Vk.compareMask = 1,
+                    Vk.reference = 1
+                }
+            },
 
             Vk.colorBlendState = Just $ Vk.SomeStruct Vk.zero {
                 Vk.logicOpEnable = False,

@@ -128,7 +128,7 @@ newBaseRenderTarget Renderer {..} image width height imageFormat = do
         environmentDevice
         Vk.zero {
             Vk.renderPass = rendererRenderPass,
-            Vk.attachments = V.singleton renderTargetImageView,
+            Vk.attachments = V.fromList [renderTargetImageView, renderTargetStencilView],
             Vk.width = fromIntegral width,
             Vk.height = fromIntegral height,
             Vk.layers = 1
