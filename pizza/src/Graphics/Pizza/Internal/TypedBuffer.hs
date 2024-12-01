@@ -35,10 +35,8 @@ data TypedBuffer a = TypedBuffer {
     typedBufferObject :: Vk.Buffer
 }
 
-newTypedBufferSized :: (MonadIO m) => Renderer -> Vk.BufferUsageFlags -> Int -> m (TypedBuffer a)
-newTypedBufferSized Renderer {..} usage size = do
-    let Environment {..} = rendererEnvironment
-
+newTypedBufferSized :: (MonadIO m) => Environment -> Vk.BufferUsageFlags -> Int -> m (TypedBuffer a)
+newTypedBufferSized Environment {..} usage size = do
     (typedBufferObject, typedBufferAlloc, _) <- Vma.createBuffer
         environmentAllocator
         Vk.zero { -- Vk.BufferCreateInfo
@@ -55,20 +53,20 @@ newTypedBufferSized Renderer {..} usage size = do
     pure TypedBuffer {..}
 
 
-newTypedBufferNA :: (MonadIO m, Storable a) => Renderer -> Vk.BufferUsageFlags -> Int -> a -> m (TypedBuffer a)
-newTypedBufferNA renderer usage n a = newTypedBufferSized renderer usage (n * sizeOf a)
+newTypedBufferNA :: (MonadIO m, Storable a) => Environment -> Vk.BufferUsageFlags -> Int -> a -> m (TypedBuffer a)
+newTypedBufferNA environment usage n a = newTypedBufferSized environment usage (n * sizeOf a)
 
-newTypedBufferN :: (MonadIO m, Storable a) => Renderer -> Vk.BufferUsageFlags -> Int -> m (TypedBuffer a)
-newTypedBufferN renderer usage n = newTypedBufferNA renderer usage n undefined
+newTypedBufferN :: (MonadIO m, Storable a) => Environment -> Vk.BufferUsageFlags -> Int -> m (TypedBuffer a)
+newTypedBufferN environment usage n = newTypedBufferNA environment usage n undefined
 
-newTypedBufferF :: (MonadIO m, Foldable f, Storable a) => Renderer -> Vk.BufferUsageFlags -> f a -> m (TypedBuffer a)
-newTypedBufferF renderer usage f = do
+newTypedBufferF :: (MonadIO m, Foldable f, Storable a) => Environment -> Vk.BufferUsageFlags -> f a -> m (TypedBuffer a)
+newTypedBufferF environment usage f = do
     let n = length f
-    typedBuffer <- newTypedBufferN renderer usage n
+    typedBuffer <- newTypedBufferN environment usage n
 
-    ptr <- mapTypedBuffer renderer typedBuffer
+    ptr <- mapTypedBuffer environment typedBuffer
     liftIO $ pokeArray ptr (toList f)
-    unmapTypedBuffer renderer typedBuffer
+    unmapTypedBuffer environment typedBuffer
 
     pure typedBuffer
 
@@ -76,35 +74,29 @@ castTypedBuffer :: TypedBuffer a -> TypedBuffer b
 castTypedBuffer TypedBuffer {..} = TypedBuffer {..}
 
 
-freeTypedBuffer :: (MonadIO m) => Renderer -> TypedBuffer a -> m ()
-freeTypedBuffer Renderer {..} TypedBuffer {..} =
+freeTypedBuffer :: (MonadIO m) => Environment -> TypedBuffer a -> m ()
+freeTypedBuffer Environment {..} TypedBuffer {..} =
     Vma.destroyBuffer environmentAllocator typedBufferObject typedBufferAlloc
-  where
-    Environment {..} = rendererEnvironment
 
 
-mapTypedBuffer :: (MonadIO m) => Renderer -> TypedBuffer a -> m (Ptr a)
-mapTypedBuffer Renderer {..} TypedBuffer {..} =
+mapTypedBuffer :: (MonadIO m) => Environment -> TypedBuffer a -> m (Ptr a)
+mapTypedBuffer Environment {..} TypedBuffer {..} =
     castPtr <$> Vma.mapMemory environmentAllocator typedBufferAlloc
-  where
-    Environment {..} = rendererEnvironment
 
-unmapTypedBuffer :: (MonadIO m) => Renderer -> TypedBuffer a -> m ()
-unmapTypedBuffer Renderer {..} TypedBuffer {..} =
+unmapTypedBuffer :: (MonadIO m) => Environment -> TypedBuffer a -> m ()
+unmapTypedBuffer Environment {..} TypedBuffer {..} =
     Vma.unmapMemory environmentAllocator typedBufferAlloc
-  where
-    Environment {..} = rendererEnvironment
 
 
-readTypedBuffer1 :: (MonadIO m, Storable a) => Renderer -> TypedBuffer a -> m a
-readTypedBuffer1 renderer typedBuffer = do
-    ptr <- mapTypedBuffer renderer typedBuffer
+readTypedBuffer1 :: (MonadIO m, Storable a) => Environment -> TypedBuffer a -> m a
+readTypedBuffer1 environment typedBuffer = do
+    ptr <- mapTypedBuffer environment typedBuffer
     result <- liftIO $ peek ptr
-    unmapTypedBuffer renderer typedBuffer
+    unmapTypedBuffer environment typedBuffer
     pure result
 
-writeTypedBuffer1 :: (MonadIO m, Storable a) => Renderer -> TypedBuffer a -> a -> m ()
-writeTypedBuffer1 renderer typedBuffer a = do
-    ptr <- mapTypedBuffer renderer typedBuffer
+writeTypedBuffer1 :: (MonadIO m, Storable a) => Environment -> TypedBuffer a -> a -> m ()
+writeTypedBuffer1 environment typedBuffer a = do
+    ptr <- mapTypedBuffer environment typedBuffer
     liftIO $ poke ptr a
-    unmapTypedBuffer renderer typedBuffer
+    unmapTypedBuffer environment typedBuffer

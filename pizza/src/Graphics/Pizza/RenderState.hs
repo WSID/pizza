@@ -114,10 +114,10 @@ newRenderState Renderer {..} = do
     let renderStateCommandBuffer = V.head commandBuffers
 
 
-    renderStateVertex <- newTypedBufferN Renderer {..}
+    renderStateVertex <- newTypedBufferN rendererEnvironment
         Vk.BUFFER_USAGE_VERTEX_BUFFER_BIT 1024
 
-    renderStateIndex <- newTypedBufferN Renderer {..}
+    renderStateIndex <- newTypedBufferN rendererEnvironment
         Vk.BUFFER_USAGE_INDEX_BUFFER_BIT 1024
 
     descriptorSets <- Vk.allocateDescriptorSets
@@ -128,8 +128,8 @@ newRenderState Renderer {..} = do
         }
     let [renderStateScreenDS, renderStatePatternDS] = V.toList descriptorSets
 
-    renderStateScreenUniform <- newTypedBufferN Renderer {..} Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 1
-    renderStatePatternUniform <- newTypedBufferSized Renderer {..} Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 64
+    renderStateScreenUniform <- newTypedBufferN rendererEnvironment Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 1
+    renderStatePatternUniform <- newTypedBufferSized rendererEnvironment Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 64
     renderStateSemaphore <- Vk.createSemaphore environmentDevice Vk.zero Nothing
     renderStateFence <- Vk.createFence environmentDevice Vk.zero Nothing
 
@@ -174,11 +174,11 @@ freeRenderState Renderer {..} RenderState {..} = do
     let Environment {..} = rendererEnvironment
     Vk.destroyFence environmentDevice renderStateFence Nothing
     Vk.destroySemaphore environmentDevice renderStateSemaphore Nothing
-    freeTypedBuffer Renderer {..} renderStateScreenUniform
-    freeTypedBuffer Renderer {..} renderStatePatternUniform
+    freeTypedBuffer rendererEnvironment renderStateScreenUniform
+    freeTypedBuffer rendererEnvironment renderStatePatternUniform
     Vk.freeDescriptorSets environmentDevice rendererDescriptorPool (V.fromList [renderStateScreenDS, renderStatePatternDS])
-    freeTypedBuffer Renderer {..} renderStateIndex
-    freeTypedBuffer Renderer {..} renderStateVertex
+    freeTypedBuffer rendererEnvironment renderStateIndex
+    freeTypedBuffer rendererEnvironment renderStateVertex
     Vk.freeCommandBuffers environmentDevice rendererCommandPool (V.singleton renderStateCommandBuffer)
 
 
@@ -209,28 +209,28 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
 
     let Path vertices _ = path
 
-    vptr <- mapTypedBuffer Renderer {..} renderStateVertex
+    vptr <- mapTypedBuffer rendererEnvironment renderStateVertex
     liftIO $ pokeArray vptr vertices
-    unmapTypedBuffer Renderer {..} renderStateVertex
+    unmapTypedBuffer rendererEnvironment renderStateVertex
 
     -- Indices
 
     let (indicesFirst: indicesSnd: indicesRest) = zipWith const [0 .. ] vertices
     let indices = zipWith (\a b -> V3 indicesFirst a b) (indicesSnd: indicesRest) indicesRest
 
-    iptr <- mapTypedBuffer Renderer {..} renderStateIndex
+    iptr <- mapTypedBuffer rendererEnvironment renderStateIndex
     liftIO $ pokeArray iptr indices
-    unmapTypedBuffer Renderer {..} renderStateIndex
+    unmapTypedBuffer rendererEnvironment renderStateIndex
 
     -- Pattern Uniforms
 
-    writeTypedBuffer1 Renderer {..} renderStateScreenUniform (fromIntegral <$> V2 width height)
-    ptr <- mapTypedBuffer Renderer {..} renderStatePatternUniform
+    writeTypedBuffer1 rendererEnvironment  renderStateScreenUniform (fromIntegral <$> V2 width height)
+    ptr <- mapTypedBuffer rendererEnvironment renderStatePatternUniform
     liftIO $ case pattern of
         PatternSolid color -> poke (castPtr ptr) color
         PatternLinear ps pe cs ce -> poke (castPtr ptr) (PreparationLinear ps pe cs ce)
         PatternRadial ps r cs ce -> poke (castPtr ptr) (PreparationRadial ps r cs ce)
-    unmapTypedBuffer Renderer {..} renderStatePatternUniform
+    unmapTypedBuffer rendererEnvironment renderStatePatternUniform
 
     Vk.resetCommandBuffer renderStateCommandBuffer zeroBits
     Vk.useCommandBuffer
