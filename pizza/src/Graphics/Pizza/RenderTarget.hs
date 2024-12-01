@@ -26,6 +26,10 @@ import Graphics.Pizza.Renderer
 
 data BaseRenderTarget = BaseRenderTarget {
     renderTargetImageView :: Vk.ImageView,
+    renderTargetStencil :: Vk.Image,
+    renderTargetStencilAlloc :: Vma.Allocation,
+    renderTargetStencilView :: Vk.ImageView,
+    renderTargetStencilBuffer :: Vk.Framebuffer,
     renderTargetFramebuffer :: Vk.Framebuffer
 }
 
@@ -68,6 +72,58 @@ newBaseRenderTarget Renderer {..} image width height imageFormat = do
         }
         Nothing
 
+    (renderTargetStencil, renderTargetStencilAlloc, _) <- Vma.createImage
+        environmentAllocator
+        (Vk.zero :: Vk.ImageCreateInfo '[]) {
+            Vk.imageType = Vk.IMAGE_TYPE_2D,
+            Vk.format = Vk.FORMAT_S8_UINT,
+            Vk.extent = Vk.Extent3D (fromIntegral width) (fromIntegral height) 1,
+            Vk.mipLevels = 1,
+            Vk.arrayLayers = 1,
+            Vk.samples = Vk.SAMPLE_COUNT_1_BIT,
+            Vk.usage = Vk.IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+            Vk.queueFamilyIndices = V.singleton environmentGraphicsQFI,
+            Vk.initialLayout = Vk.IMAGE_LAYOUT_UNDEFINED
+        }
+        (Vk.zero :: Vma.AllocationCreateInfo) {
+            Vma.preferredFlags = Vk.MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+        }
+
+    renderTargetStencilView <- Vk.createImageView
+        environmentDevice
+        Vk.ImageViewCreateInfo {
+            Vk.next = (),
+            Vk.flags = zeroBits,
+            Vk.image = renderTargetStencil,
+            Vk.viewType = Vk.IMAGE_VIEW_TYPE_2D,
+            Vk.format = Vk.FORMAT_S8_UINT,
+            Vk.components = Vk.ComponentMapping
+                Vk.COMPONENT_SWIZZLE_IDENTITY
+                Vk.COMPONENT_SWIZZLE_IDENTITY
+                Vk.COMPONENT_SWIZZLE_IDENTITY
+                Vk.COMPONENT_SWIZZLE_IDENTITY,
+            Vk.subresourceRange = Vk.ImageSubresourceRange {
+                Vk.aspectMask = Vk.IMAGE_ASPECT_STENCIL_BIT,
+                Vk.baseMipLevel = 0,
+                Vk.levelCount = 1,
+                Vk.baseArrayLayer = 0,
+                Vk.layerCount = 1
+            }
+        }
+        Nothing
+
+    renderTargetStencilBuffer <- Vk.createFramebuffer
+        environmentDevice
+        Vk.zero {
+            Vk.renderPass = rendererStencilRenderPass,
+            Vk.attachments = V.singleton renderTargetStencilView,
+            Vk.width = fromIntegral width,
+            Vk.height = fromIntegral height,
+            Vk.layers = 1
+        }
+        Nothing
+
+
     renderTargetFramebuffer <- Vk.createFramebuffer
         environmentDevice
         Vk.zero {
@@ -86,6 +142,9 @@ freeBaseRenderTarget :: (MonadIO m) => Renderer -> BaseRenderTarget -> m ()
 freeBaseRenderTarget Renderer {..} BaseRenderTarget {..} = do
     let Environment {..} = rendererEnvironment
     Vk.destroyFramebuffer environmentDevice renderTargetFramebuffer Nothing
+    Vk.destroyFramebuffer environmentDevice renderTargetStencilBuffer Nothing
+    Vk.destroyImageView environmentDevice renderTargetStencilView Nothing
+    Vma.destroyImage environmentAllocator renderTargetStencil renderTargetStencilAlloc
     Vk.destroyImageView environmentDevice renderTargetImageView Nothing
 
 recordBaseRenderTarget :: (MonadIO m) => Vk.CommandBuffer -> Renderer -> Int -> Int -> BaseRenderTarget -> m r -> m r

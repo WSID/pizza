@@ -47,12 +47,20 @@ data Renderer = Renderer {
     rendererImageFormat :: Vk.Format,
     rendererImageLayout :: Vk.ImageLayout,
 
-    -- Render Pass
-    rendererRenderPass :: Vk.RenderPass,
-
-    -- Pipeline common
+    -- Stencil Render Pass
+    -- TOOD: Check we can merge two as single render pass.
+    rendererStencilRenderPass :: Vk.RenderPass,
     rendererShaderVert :: Vk.ShaderModule,
     rendererScreenDSLayout :: Vk.DescriptorSetLayout,
+
+    -- Stencil Pipeline
+    rendererStencilPipelineLayout :: Vk.PipelineLayout,
+    rendererStencilPipeline :: Vk.Pipeline,
+
+    -- Pattern Render Pass
+    rendererRenderPass :: Vk.RenderPass,
+
+    -- Pattern pipeline common
     rendererPatternDSLayout :: Vk.DescriptorSetLayout,
     rendererPatternLayout :: Vk.PipelineLayout,
 
@@ -76,24 +84,24 @@ newRenderer :: (MonadIO m) => Environment -> Vk.Format -> Vk.ImageLayout -> m Re
 newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
     let Environment {..} = rendererEnvironment
 
-    rendererRenderPass <- Vk.createRenderPass
+    rendererStencilRenderPass <- Vk.createRenderPass
         environmentDevice
-        Vk.zero {   -- Vk.RenderPassCreateInfo
+        Vk.zero { -- Vk.RenderPassCreateInfo
             Vk.attachments = V.singleton (Vk.zero :: Vk.AttachmentDescription) {
-                Vk.format = rendererImageFormat,
+                Vk.format = Vk.FORMAT_S8_UINT,
                 Vk.samples = Vk.SAMPLE_COUNT_1_BIT,
-                Vk.loadOp = Vk.ATTACHMENT_LOAD_OP_CLEAR,
-                Vk.storeOp = Vk.ATTACHMENT_STORE_OP_STORE,
-                Vk.stencilLoadOp = Vk.ATTACHMENT_LOAD_OP_DONT_CARE,
-                Vk.stencilStoreOp = Vk.ATTACHMENT_STORE_OP_DONT_CARE,
+                Vk.loadOp = Vk.ATTACHMENT_LOAD_OP_DONT_CARE,
+                Vk.storeOp = Vk.ATTACHMENT_STORE_OP_DONT_CARE,
+                Vk.stencilLoadOp = Vk.ATTACHMENT_LOAD_OP_CLEAR,
+                Vk.stencilStoreOp = Vk.ATTACHMENT_STORE_OP_STORE,
                 Vk.initialLayout = Vk.IMAGE_LAYOUT_UNDEFINED,
-                Vk.finalLayout = rendererImageLayout
+                Vk.finalLayout = Vk.IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
             },
             Vk.subpasses = V.singleton (Vk.zero :: Vk.SubpassDescription) {
                 Vk.pipelineBindPoint = Vk.PIPELINE_BIND_POINT_GRAPHICS,
-                Vk.colorAttachments = V.singleton Vk.AttachmentReference {
+                Vk.depthStencilAttachment = Just Vk.AttachmentReference {
                     Vk.attachment = 0,
-                    Vk.layout = Vk.IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+                    Vk.layout = Vk.IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
                 }
             },
             Vk.dependencies = V.singleton (Vk.zero :: Vk.SubpassDependency) {
@@ -130,6 +138,141 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
                     gl_Position = vec4(normPos, 0.0, 1.0);
                 }
             |]
+        }
+        Nothing
+
+    rendererScreenDSLayout <- Vk.createDescriptorSetLayout
+        environmentDevice
+        Vk.zero {
+            Vk.bindings = V.singleton Vk.zero {
+                Vk.binding = 0,
+                Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                Vk.descriptorCount = 1,
+                Vk.stageFlags = Vk.SHADER_STAGE_VERTEX_BIT
+            }
+        }
+        Nothing
+
+
+    rendererStencilPipelineLayout <- Vk.createPipelineLayout
+        environmentDevice
+        Vk.PipelineLayoutCreateInfo {
+            Vk.flags = zeroBits,
+            Vk.setLayouts = V.singleton rendererScreenDSLayout,
+            Vk.pushConstantRanges = V.empty
+        }
+        Nothing
+
+    let stencilPipelineCreateInfo = (Vk.zero :: Vk.GraphicsPipelineCreateInfo '[]) {
+            Vk.next = (),
+            Vk.stageCount = 1,
+            Vk.stages = V.singleton (
+                Vk.SomeStruct Vk.zero {
+                    Vk.stage = Vk.SHADER_STAGE_VERTEX_BIT,
+                    Vk.name = BSC.pack "main",
+                    Vk.module' = rendererShaderVert
+                }
+            ),
+
+            Vk.vertexInputState = Just $ Vk.SomeStruct $ Vk.zero {
+                Vk.vertexBindingDescriptions = V.singleton Vk.VertexInputBindingDescription {
+                    Vk.binding = 0,
+                    Vk.stride = fromIntegral $ sizeOf (undefined :: V2 Float),
+                    Vk.inputRate = Vk.VERTEX_INPUT_RATE_VERTEX
+                },
+                Vk.vertexAttributeDescriptions = V.singleton Vk.VertexInputAttributeDescription {
+                    Vk.location = 0,
+                    Vk.binding = 0,
+                    Vk.format = Vk.FORMAT_R32G32_SFLOAT,
+                    Vk.offset = 0
+                }
+            },
+
+            Vk.inputAssemblyState = Just $ Vk.zero {
+                Vk.topology = Vk.PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
+            },
+
+            Vk.viewportState = Just $ Vk.SomeStruct Vk.zero {
+                Vk.viewportCount = 1,
+                Vk.scissorCount = 1
+            },
+
+            Vk.rasterizationState = Just $ Vk.SomeStruct Vk.zero {
+                Vk.polygonMode = Vk.POLYGON_MODE_FILL,
+                Vk.cullMode = Vk.CULL_MODE_BACK_BIT,
+                Vk.frontFace = Vk.FRONT_FACE_CLOCKWISE,
+                Vk.lineWidth = 1
+            },
+
+            Vk.multisampleState = Just $ Vk.SomeStruct Vk.zero {
+                Vk.next = (),
+                Vk.rasterizationSamples = Vk.SAMPLE_COUNT_1_BIT
+            },
+
+            Vk.depthStencilState = Just Vk.zero {
+                Vk.stencilTestEnable = True,
+                Vk.front = Vk.zero {
+                    Vk.passOp = Vk.STENCIL_OP_INCREMENT_AND_WRAP,
+                    Vk.compareOp = Vk.COMPARE_OP_ALWAYS,
+                    Vk.compareMask = oneBits,
+                    Vk.writeMask = oneBits
+                },
+                Vk.back = Vk.zero {
+                    Vk.passOp = Vk.STENCIL_OP_DECREMENT_AND_WRAP,
+                    Vk.compareOp = Vk.COMPARE_OP_ALWAYS,
+                    Vk.compareMask = oneBits,
+                    Vk.writeMask = oneBits
+                }
+            },
+
+            Vk.colorBlendState = Nothing,
+
+            Vk.dynamicState = Just Vk.zero {
+                Vk.dynamicStates = V.fromList [
+                    Vk.DYNAMIC_STATE_VIEWPORT,
+                    Vk.DYNAMIC_STATE_SCISSOR
+                ]
+            },
+
+            Vk.layout = rendererStencilPipelineLayout,
+            Vk.renderPass = rendererStencilRenderPass,
+            Vk.subpass = 0
+        }
+
+    (_, stencilPipelines) <- Vk.createGraphicsPipelines
+        environmentDevice
+        Vk.NULL_HANDLE
+        (V.singleton $ Vk.SomeStruct stencilPipelineCreateInfo)
+        Nothing
+
+    let rendererStencilPipeline = V.head stencilPipelines
+
+    rendererRenderPass <- Vk.createRenderPass
+        environmentDevice
+        Vk.zero {   -- Vk.RenderPassCreateInfo
+            Vk.attachments = V.singleton (Vk.zero :: Vk.AttachmentDescription) {
+                Vk.format = rendererImageFormat,
+                Vk.samples = Vk.SAMPLE_COUNT_1_BIT,
+                Vk.loadOp = Vk.ATTACHMENT_LOAD_OP_CLEAR,
+                Vk.storeOp = Vk.ATTACHMENT_STORE_OP_STORE,
+                Vk.stencilLoadOp = Vk.ATTACHMENT_LOAD_OP_DONT_CARE,
+                Vk.stencilStoreOp = Vk.ATTACHMENT_STORE_OP_DONT_CARE,
+                Vk.initialLayout = Vk.IMAGE_LAYOUT_UNDEFINED,
+                Vk.finalLayout = rendererImageLayout
+            },
+            Vk.subpasses = V.singleton (Vk.zero :: Vk.SubpassDescription) {
+                Vk.pipelineBindPoint = Vk.PIPELINE_BIND_POINT_GRAPHICS,
+                Vk.colorAttachments = V.singleton Vk.AttachmentReference {
+                    Vk.attachment = 0,
+                    Vk.layout = Vk.IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+                }
+            },
+            Vk.dependencies = V.singleton (Vk.zero :: Vk.SubpassDependency) {
+                Vk.srcSubpass = Vk.SUBPASS_EXTERNAL,
+                Vk.srcStageMask = Vk.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                Vk.dstStageMask = Vk.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                Vk.dstAccessMask = Vk.ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+            }
         }
         Nothing
 
@@ -212,18 +355,6 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
             Vk.renderPass = rendererRenderPass,
             Vk.subpass = 0
         }
-
-    rendererScreenDSLayout <- Vk.createDescriptorSetLayout
-        environmentDevice
-        Vk.zero {
-            Vk.bindings = V.singleton Vk.zero {
-                Vk.binding = 0,
-                Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                Vk.descriptorCount = 1,
-                Vk.stageFlags = Vk.SHADER_STAGE_VERTEX_BIT
-            }
-        }
-        Nothing
 
     rendererPatternDSLayout <- Vk.createDescriptorSetLayout
         environmentDevice
@@ -378,8 +509,11 @@ freeRenderer Renderer {..} = do
     Vk.destroyShaderModule environmentDevice rendererPatternSolidShaderFrag Nothing
     Vk.destroyPipelineLayout environmentDevice rendererPatternLayout Nothing
     Vk.destroyDescriptorSetLayout environmentDevice rendererPatternDSLayout Nothing
+    Vk.destroyRenderPass environmentDevice rendererRenderPass Nothing
+    Vk.destroyPipeline environmentDevice rendererStencilPipeline Nothing
+    Vk.destroyPipelineLayout environmentDevice rendererStencilPipelineLayout Nothing
     Vk.destroyDescriptorSetLayout environmentDevice rendererScreenDSLayout Nothing
     Vk.destroyShaderModule environmentDevice rendererShaderVert Nothing
-    Vk.destroyRenderPass environmentDevice rendererRenderPass Nothing
+    Vk.destroyRenderPass environmentDevice rendererStencilRenderPass Nothing
     Vk.destroyCommandPool environmentDevice rendererCommandPool Nothing
     Vk.destroyDescriptorPool environmentDevice rendererDescriptorPool Nothing

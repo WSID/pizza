@@ -251,6 +251,44 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
 
         Vk.cmdSetScissor renderStateCommandBuffer 0 $ V.singleton renderArea
 
+        -- Stencil phase
+        Vk.cmdUseRenderPass
+            renderStateCommandBuffer
+            Vk.zero {
+                Vk.renderPass = rendererStencilRenderPass,
+                Vk.framebuffer = renderTargetStencilBuffer,
+                Vk.renderArea = renderArea,
+                Vk.clearValues = V.singleton (Vk.DepthStencil (Vk.ClearDepthStencilValue 0 0))
+            }
+            Vk.SUBPASS_CONTENTS_INLINE
+            $ do
+
+            Vk.cmdBindDescriptorSets
+                renderStateCommandBuffer
+                Vk.PIPELINE_BIND_POINT_GRAPHICS
+                rendererStencilPipelineLayout
+                0
+                (V.singleton renderStateScreenDS)
+                (V.empty)
+
+            Vk.cmdBindPipeline
+                renderStateCommandBuffer
+                Vk.PIPELINE_BIND_POINT_GRAPHICS
+                rendererStencilPipeline
+
+            Vk.cmdBindIndexBuffer
+                renderStateCommandBuffer
+                (typedBufferObject renderStateIndex) 0 Vk.INDEX_TYPE_UINT32
+
+            Vk.cmdBindVertexBuffers
+                renderStateCommandBuffer
+                0
+                (V.singleton $ typedBufferObject renderStateVertex)
+                (V.singleton 0)
+
+            Vk.cmdDrawIndexed renderStateCommandBuffer (3 * (fromIntegral $ length indices)) 1 0 0 0
+
+        -- Color phase
         Vk.cmdUseRenderPass
             renderStateCommandBuffer
             Vk.zero {
