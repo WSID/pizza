@@ -60,7 +60,6 @@ library
 
     -- Modules exported by the library.
     exposed-modules:
-    	MyLib,
     	Graphics.Pizza,
     	Graphics.Pizza.Environment,
     	Graphics.Pizza.Graphic,
