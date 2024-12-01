@@ -319,12 +319,12 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
 
             Vk.cmdBindIndexBuffer
                 renderStateCommandBuffer
-                (typedBufferObject renderStateIndex) 0 Vk.INDEX_TYPE_UINT32
+                (typedBufferObject rendererQuadIndices) 0 Vk.INDEX_TYPE_UINT32
 
             Vk.cmdBindVertexBuffers
                 renderStateCommandBuffer
                 0
-                (V.singleton $ typedBufferObject renderStateVertex)
+                (V.singleton $ typedBufferObject rendererQuadVertices)
                 (V.singleton 0)
 
             Vk.cmdBindDescriptorSets
@@ -335,7 +335,7 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
                 (V.singleton renderStatePatternDS)
                 (V.empty)
 
-            Vk.cmdDrawIndexed renderStateCommandBuffer (3 * (fromIntegral $ length indices)) 1 0 0 0
+            Vk.cmdDrawIndexed renderStateCommandBuffer 6 1 0 0 0
 
 renderRenderStateTarget :: (MonadIO m) => Renderer -> RenderState -> Graphics -> RenderTarget -> Maybe Vk.Semaphore -> m (m ())
 renderRenderStateTarget Renderer {..} RenderState {..} graphics RenderTarget {..} wait = do

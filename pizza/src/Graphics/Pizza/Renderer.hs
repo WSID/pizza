@@ -37,6 +37,7 @@ import qualified VulkanMemoryAllocator as Vma
 
 -- pizza
 import Graphics.Pizza.Environment
+import Graphics.Pizza.Internal.TypedBuffer
 
 
 data Renderer = Renderer {
@@ -61,6 +62,7 @@ data Renderer = Renderer {
     rendererRenderPass :: Vk.RenderPass,
 
     -- Pattern pipeline common
+    rendererPatternShaderVert :: Vk.ShaderModule,
     rendererPatternDSLayout :: Vk.DescriptorSetLayout,
     rendererPatternLayout :: Vk.PipelineLayout,
 
@@ -77,7 +79,11 @@ data Renderer = Renderer {
 
     -- Pools
     rendererDescriptorPool :: Vk.DescriptorPool,
-    rendererCommandPool :: Vk.CommandPool
+    rendererCommandPool :: Vk.CommandPool,
+
+    -- Common Parts
+    rendererQuadVertices :: TypedBuffer (V2 Float),
+    rendererQuadIndices :: TypedBuffer (V3 Word32)
 }
 
 newRenderer :: (MonadIO m) => Environment -> Vk.Format -> Vk.ImageLayout -> m Renderer
@@ -199,7 +205,7 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
 
             Vk.rasterizationState = Just $ Vk.SomeStruct Vk.zero {
                 Vk.polygonMode = Vk.POLYGON_MODE_FILL,
-                Vk.cullMode = Vk.CULL_MODE_BACK_BIT,
+                Vk.cullMode = Vk.CULL_MODE_NONE,
                 Vk.frontFace = Vk.FRONT_FACE_CLOCKWISE,
                 Vk.lineWidth = 1
             },
@@ -276,6 +282,33 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
         }
         Nothing
 
+    rendererPatternShaderVert <- Vk.createShaderModule
+        environmentDevice
+        Vk.zero { -- Vk.ShaderModuleCreateInfo
+            Vk.code = [Vku.vert|
+                #version 450
+
+                layout (location = 0)
+                in vec2 pos;
+
+                layout (location = 0)
+                out vec2 fragPos;
+
+                layout (set = 0, binding = 0) uniform Screen {
+                    vec2 size;
+                };
+
+                void main () {
+                    gl_Position = vec4 (pos, 0, 1);
+
+                    // Map (-1, -1) ~ (+1, +1), to (0, 0) ~ screenSize
+                    fragPos = (pos + 1) * 0.5f * size;
+                }
+            |]
+        }
+        Nothing
+
+
     let basePipelineCreateInfo fragShaderModule pipelineLayout = Vk.zero {
             Vk.next = (),
             Vk.stageCount = 2,
@@ -283,7 +316,7 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
                 Vk.SomeStruct Vk.zero {
                     Vk.stage = Vk.SHADER_STAGE_VERTEX_BIT,
                     Vk.name = BSC.pack "main",
-                    Vk.module' = rendererShaderVert
+                    Vk.module' = rendererPatternShaderVert
                 },
                 Vk.SomeStruct Vk.zero {
                     Vk.stage = Vk.SHADER_STAGE_FRAGMENT_BIT,
@@ -317,8 +350,7 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
 
             Vk.rasterizationState = Just $ Vk.SomeStruct Vk.zero {
                 Vk.polygonMode = Vk.POLYGON_MODE_FILL,
-                Vk.cullMode = Vk.CULL_MODE_BACK_BIT,
-                Vk.frontFace = Vk.FRONT_FACE_CLOCKWISE,
+                Vk.cullMode = Vk.CULL_MODE_NONE,
                 Vk.lineWidth = 1
             },
 
@@ -495,12 +527,32 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
         }
         Nothing
 
+    rendererQuadVertices <- newTypedBufferF
+        rendererEnvironment
+        Vk.BUFFER_USAGE_VERTEX_BUFFER_BIT
+        [
+            V2 (-1) (-1),
+            V2 1 (-1),
+            V2 1 1,
+            V2 (-1) 1
+        ]
+
+    rendererQuadIndices <- newTypedBufferF
+        rendererEnvironment
+        Vk.BUFFER_USAGE_INDEX_BUFFER_BIT
+        [
+            V3 0 1 2,
+            V3 0 2 3
+        ]
+
     pure Renderer {..}
 
 
 freeRenderer :: (MonadIO m) => Renderer -> m ()
 freeRenderer Renderer {..} = do
     let Environment {..} = rendererEnvironment
+    freeTypedBuffer rendererEnvironment rendererQuadIndices
+    freeTypedBuffer rendererEnvironment rendererQuadVertices
     Vk.destroyPipeline environmentDevice rendererPatternRadial Nothing
     Vk.destroyShaderModule environmentDevice rendererPatternRadialShaderFrag Nothing
     Vk.destroyPipeline environmentDevice rendererPatternLinear Nothing
@@ -509,6 +561,7 @@ freeRenderer Renderer {..} = do
     Vk.destroyShaderModule environmentDevice rendererPatternSolidShaderFrag Nothing
     Vk.destroyPipelineLayout environmentDevice rendererPatternLayout Nothing
     Vk.destroyDescriptorSetLayout environmentDevice rendererPatternDSLayout Nothing
+    Vk.destroyShaderModule environmentDevice rendererPatternShaderVert Nothing
     Vk.destroyRenderPass environmentDevice rendererRenderPass Nothing
     Vk.destroyPipeline environmentDevice rendererStencilPipeline Nothing
     Vk.destroyPipelineLayout environmentDevice rendererStencilPipelineLayout Nothing
