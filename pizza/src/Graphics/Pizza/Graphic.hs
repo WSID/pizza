@@ -1,3 +1,5 @@
+{-# LANGUAGE RecordWildCards #-}
+
 module Graphics.Pizza.Graphic where
 
 import Control.Applicative
@@ -24,21 +26,24 @@ data PathPart
 newtype Path = Path [PathPart]
 
 data PathSplitOptions = PathSplitOptions {
-    maxDistance :: Float,
-    maxSideDist :: Float
+    pathSplitDistance :: Float,
+    pathSplitHeight :: Float
 }
 
 -- Functions
 
 continueSplitPoint :: PathSplitOptions -> V2 Float -> V2 Float -> V2 Float -> Bool
-continueSplitPoint (PathSplitOptions maxDist maxSideDist) a b c = metDist || metSideDist
+continueSplitPoint PathSplitOptions {..} a b c = metDist || metHeight
   where
-    displacement = c - a
-    distance = norm displacement
-    sideDist = abs (crossZ (c - b) displacement)
+    ac = c - a
+    bc = c - b
+    dist = norm ac
+    crs = abs (crossZ bc ac)
 
-    metDist = maxDist < distance
-    metSideDist = maxSideDist < sideDist
+    metDist = pathSplitDistance < dist
+    metHeight
+        | dist < 0.001  = pathSplitHeight < norm bc
+        | otherwise = pathSplitHeight * dist < crs
 
 
 pathPartToPoints :: PathPart -> [V2 Float]
