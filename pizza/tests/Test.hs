@@ -47,7 +47,10 @@ main = do
             "Paths" ~: TestList [
                 "Half" ~: testPath pathHalf maskHalf,
                 "Diamond" ~: testPath pathDiamond maskDiamond,
-                "Double Diamond" ~: testPath pathDoubleDiamond maskDoubleDiamond
+                "Double Diamond" ~: testPath pathDoubleDiamond maskDoubleDiamond,
+                "Half Circle" ~: testPath pathHalfCircle maskHalfCircle,
+                "Circle" ~: testPath pathCircle maskCircle,
+                "Corner Bezier" ~: testPath pathCornerBezier maskCornerBezier
             ]
         ]
 
@@ -78,6 +81,17 @@ pathDoubleDiamond = Graphics.Pizza.Path [
         PathPoint (V2 50 200)
     ]
 
+pathHalfCircle :: Graphics.Pizza.Path
+pathHalfCircle = Graphics.Pizza.Path [ arc (V2 100 100) 100 0 pi ]
+
+pathCircle :: Graphics.Pizza.Path
+pathCircle = Graphics.Pizza.Path [ arc (V2 100 100) 100 0 (2 * pi) ]
+
+pathCornerBezier :: Graphics.Pizza.Path
+pathCornerBezier = Graphics.Pizza.Path [
+        PathPoint (V2 0 0),
+        bezier (V2 200 0) [V2 200 200] (V2 0 200)
+    ]
 
 -- Masks
 
@@ -102,6 +116,20 @@ maskDoubleDiamond = contains <$> coordinates
         | x < 150   = (300 - 2 * x <= y) && (y <= (-100) + 2 * x)
         | otherwise = (2 * x - 300 <= y) && (y <= 500 - 2 * x)
 
+maskHalfCircle :: [Bool]
+maskHalfCircle = contains <$> coordinates
+  where
+    contains (V2 x y) = (distance (V2 x y) (V2 100 100) <= 100) && (y >= 100)
+
+maskCircle :: [Bool]
+maskCircle = contains <$> coordinates
+  where
+    contains coord = distance coord (V2 100 100) <= 100
+
+maskCornerBezier :: [Bool]
+maskCornerBezier = contains <$> coordinates
+  where
+    contains (V2 x y) = let t = 1 - (sqrt (160000 - 800 * y) / 400) in (x <= 200 * (1 - t * t))
 
 -- Test utility
 
