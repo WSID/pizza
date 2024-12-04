@@ -95,8 +95,8 @@ test-suite tests
     import:           warnings
 
     main-is: Test.hs
-    -- other-modules:
-    -- 	Some other module
+    other-modules:
+        ImageRender
 
     build-depends:
     	base ^>=4.17.2.1,
