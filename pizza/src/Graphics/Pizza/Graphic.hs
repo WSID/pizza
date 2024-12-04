@@ -9,7 +9,7 @@ import Linear
 
 import Graphics.Pizza.Internal.Util
 
-data Graphics = Graphics Path Pattern
+data Graphics = Graphics [Path] Pattern
 
 data Pattern =
     PatternSolid (V4 Float) |

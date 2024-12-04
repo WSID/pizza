@@ -215,27 +215,36 @@ createSwapchain Pz.Environment {..} SurfaceState {..} width height = do
 
 makeGraphic :: Float -> Pz.Graphics
 makeGraphic time = Pz.Graphics
-    (Pz.Path
-        [
-            Pz.bezier
-                (V2 0 200)
-                [
-                    V2 0 (0 - animValue1),
-                    V2 400 (400 + animValue1)
-                ]
-                (V2 400 200),
-            Pz.arc
-                (V2 (300 + animValue2) 200)
-                (100 - animValue2)
-                0
-                (negate pi),
-            Pz.arc
-                (V2 (100 + animValue2) 200)
-                (100 + animValue2)
-                0
-                pi
-        ]
-    )
+    [
+        Pz.Path
+            [
+                Pz.bezier
+                    (V2 0 200)
+                    [
+                        V2 0 (0 - animValue1),
+                        V2 400 (400 + animValue1)
+                    ]
+                    (V2 400 200),
+                Pz.arc
+                    (V2 (300 + animValue2) 200)
+                    (100 - animValue2)
+                    0
+                    (negate pi),
+                Pz.arc
+                    (V2 (100 + animValue2) 200)
+                    (100 + animValue2)
+                    0
+                    pi
+            ],
+        Pz.Path
+            [
+                Pz.arc
+                    (V2 200 200)
+                    (100 + animValue2)
+                    0
+                    (2 * pi)
+            ]
+    ]
     (Pz.PatternRadial
         (V2 (200 + 400 * cos theta) (400 + 400 * sin theta))
         400

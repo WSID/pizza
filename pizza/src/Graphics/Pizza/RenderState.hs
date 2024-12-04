@@ -4,6 +4,7 @@
 
 module Graphics.Pizza.RenderState where
 
+import Control.Monad
 import Control.Monad.IO.Class
 
 import Data.Functor
@@ -200,7 +201,7 @@ freeRenderStateSwapchain Renderer {..} RenderStateSwapchain {..} = do
 
 setRenderStateTargetBase :: (MonadIO m) => Renderer -> RenderState -> Graphics -> Int -> Int -> BaseRenderTarget -> m ()
 setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height BaseRenderTarget {..} = do
-    let Graphics path pattern = graphics
+    let Graphics paths pattern = graphics
     let renderArea = Vk.Rect2D {
         Vk.offset = Vk.Offset2D 0 0,
         Vk.extent = Vk.Extent2D (fromIntegral width) (fromIntegral height)
@@ -208,7 +209,9 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
 
     -- Vertex
 
-    let vertices = pathToPoints path
+    let pathVertices = pathToPoints <$> paths
+    let vertices = join pathVertices
+
 
     vptr <- mapTypedBuffer rendererEnvironment renderStateVertex
     liftIO $ pokeArray vptr vertices
@@ -216,8 +219,12 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
 
     -- Indices
 
-    let (indicesFirst: indicesSnd: indicesRest) = zipWith const [0 .. ] vertices
-    let indices = zipWith (\a b -> V3 indicesFirst a b) (indicesSnd: indicesRest) indicesRest
+    let pathNvertices = (fromIntegral . length) <$> pathVertices
+    let pathIndexEnds = scanl (+) 0 pathNvertices
+    let pathIndexRanges = zipWith (\a b -> [a .. pred b]) pathIndexEnds (tail pathIndexEnds)
+
+    let pathIndices = fmap (\(f: s: r) -> zipWith (\a b -> V3 f a b) (s : r) r) pathIndexRanges
+    let indices = join pathIndices
 
     iptr <- mapTypedBuffer rendererEnvironment renderStateIndex
     liftIO $ pokeArray iptr indices
