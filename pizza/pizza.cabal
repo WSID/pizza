@@ -96,7 +96,8 @@ test-suite tests
 
     main-is: Test.hs
     other-modules:
-        ImageRender
+        ImageRender,
+        TestRendering
 
     build-depends:
     	base ^>=4.17.2.1,
