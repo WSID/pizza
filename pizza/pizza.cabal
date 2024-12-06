@@ -66,6 +66,7 @@ library
     	Graphics.Pizza.Renderer,
     	Graphics.Pizza.RenderState,
     	Graphics.Pizza.RenderTarget,
+    	Graphics.Pizza.Internal.Geometry,
     	Graphics.Pizza.Internal.TypedBuffer,
     	Graphics.Pizza.Internal.Util
 
