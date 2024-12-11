@@ -56,34 +56,56 @@ coordinates = do
 -- Paths
 
 pathFull :: Graphics.Pizza.Path
-pathFull = Graphics.Pizza.Path [PathPoint (V2 0 0), PathPoint (V2 200 0), PathPoint (V2 200 200), PathPoint (V2 0 200)]
-
-pathHalf :: Graphics.Pizza.Path
-pathHalf = Graphics.Pizza.Path [PathPoint (V2 0 0), PathPoint (V2 200 0), PathPoint (V2 0 200)]
-
-pathDiamond :: Graphics.Pizza.Path
-pathDiamond = Graphics.Pizza.Path [PathPoint (V2 100 0), PathPoint (V2 200 100), PathPoint (V2 100 200), PathPoint (V2 0 100)]
-
-pathDoubleDiamond :: Graphics.Pizza.Path
-pathDoubleDiamond = Graphics.Pizza.Path [
-        PathPoint (V2 0 100),
-        PathPoint (V2 50 0),
-        PathPoint (V2 150 200),
-        PathPoint (V2 200 100),
-        PathPoint (V2 150 0),
-        PathPoint (V2 50 200)
+pathFull = Graphics.Pizza.Path [
+        PathPoint (V2 0 0),
+        PathPoint (V2 200 0),
+        PathPoint (V2 200 200),
+        PathPoint (V2 0 200)
     ]
 
-pathHalfCircle :: Graphics.Pizza.Path
-pathHalfCircle = Graphics.Pizza.Path [ arc (V2 100 100) 100 0 pi ]
+pathHalf :: [Graphics.Pizza.Path]
+pathHalf = [
+        Graphics.Pizza.Path [
+            PathPoint (V2 0 0),
+            PathPoint (V2 200 0),
+            PathPoint (V2 0 200)
+        ]
+    ]
 
-pathCircle :: Graphics.Pizza.Path
-pathCircle = Graphics.Pizza.Path [ arc (V2 100 100) 100 0 (2 * pi) ]
+pathDiamond :: [Graphics.Pizza.Path]
+pathDiamond = [
+        Graphics.Pizza.Path [
+            PathPoint (V2 100 0),
+            PathPoint (V2 200 100),
+            PathPoint (V2 100 200),
+            PathPoint (V2 0 100)
+        ]
+    ]
 
-pathCornerBezier :: Graphics.Pizza.Path
-pathCornerBezier = Graphics.Pizza.Path [
-        PathPoint (V2 0 0),
-        bezier (V2 200 0) [V2 200 200] (V2 0 200)
+pathDoubleDiamond :: [Graphics.Pizza.Path]
+pathDoubleDiamond = [
+        Graphics.Pizza.Path [
+            PathPoint (V2 0 100),
+            PathPoint (V2 50 0),
+            PathPoint (V2 150 200),
+            PathPoint (V2 200 100),
+            PathPoint (V2 150 0),
+            PathPoint (V2 50 200)
+        ]
+    ]
+
+pathHalfCircle :: [Graphics.Pizza.Path]
+pathHalfCircle = [Graphics.Pizza.Path [ arc (V2 100 100) 100 0 pi ]]
+
+pathCircle :: [Graphics.Pizza.Path]
+pathCircle = [Graphics.Pizza.Path [ arc (V2 100 100) 100 0 (2 * pi) ]]
+
+pathCornerBezier :: [Graphics.Pizza.Path]
+pathCornerBezier = [
+        Graphics.Pizza.Path [
+            PathPoint (V2 0 0),
+            bezier (V2 200 0) [V2 200 200] (V2 0 200)
+        ]
     ]
 
 -- Masks
@@ -172,9 +194,9 @@ testPatterns pattern = do
     let expected = makeExpectedImage pattern
     assert $ checkImages actual expected
 
-testPath :: Graphics.Pizza.Path -> [Bool] -> Assertion
-testPath path mask = do
-    let graphics = Graphics [path] (PatternSolid (V4 1 1 1 1))
+testPath :: [Graphics.Pizza.Path] -> [Bool] -> Assertion
+testPath paths mask = do
+    let graphics = Graphics paths (PatternSolid (V4 1 1 1 1))
     actual <- makeRenderedImage graphics
     let expected = bool (V4 0 0 0 255) (V4 255 255 255 255) <$> mask
     assert $ checkImages actual expected
