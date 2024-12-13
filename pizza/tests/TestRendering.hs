@@ -43,7 +43,9 @@ testTreeRendering = "Rendering" ~: TestList [
             "Double Diamond" ~: testPath pathDoubleDiamond maskDoubleDiamond,
             "Half Circle" ~: testPath pathHalfCircle maskHalfCircle,
             "Circle" ~: testPath pathCircle maskCircle,
-            "Corner Bezier" ~: testPath pathCornerBezier maskCornerBezier
+            "Corner Bezier" ~: testPath pathCornerBezier maskCornerBezier,
+            "Outline Circle" ~: testPath pathOutlineCircle maskOutlineCircle,
+            "Stroke Left Down" ~: testPath pathLeftDown maskLeftDown
         ]
     ]
 
@@ -108,6 +110,15 @@ pathCornerBezier = [
         ]
     ]
 
+pathOutlineCircle :: [Graphics.Pizza.Path]
+pathOutlineCircle = stroke 20 True $ Graphics.Pizza.Path [ arc (V2 100 100) 90 0 (2 * pi) ]
+
+pathLeftDown :: [Graphics.Pizza.Path]
+pathLeftDown = stroke 20 False $ Graphics.Pizza.Path [
+        PathPoint (V2 0 10),
+        PathPoint (V2 190 10),
+        PathPoint (V2 190 200)
+    ]
 -- Masks
 
 maskHalf :: [Bool]
@@ -145,6 +156,16 @@ maskCornerBezier :: [Bool]
 maskCornerBezier = contains <$> coordinates
   where
     contains (V2 x y) = let t = 1 - (sqrt (160000 - 800 * y) / 400) in (x <= 200 * (1 - t * t))
+
+maskOutlineCircle :: [Bool]
+maskOutlineCircle = contains <$> coordinates
+  where
+    contains coord = let dist = distance coord (V2 100 100) in (80 <= dist) && (dist <= 100)
+
+maskLeftDown :: [Bool]
+maskLeftDown = contains <$> coordinates
+  where
+    contains (V2 x y) = ((180 <= x) && (x <= 200)) || ((0 <= y) && (y <= 20))
 
 -- Test utility
 
@@ -200,4 +221,3 @@ testPath paths mask = do
     actual <- makeRenderedImage graphics
     let expected = bool (V4 0 0 0 255) (V4 255 255 255 255) <$> mask
     assert $ checkImages actual expected
-

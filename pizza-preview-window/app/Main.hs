@@ -243,7 +243,8 @@ makeGraphic time = Pz.Graphics
                     (100 + animValue2)
                     0
                     (2 * pi)
-            ]
+            ],
+        sk, l, r
     ]
     (Pz.PatternRadial
         (V2 (200 + 400 * cos theta) (400 + 400 * sin theta))
@@ -253,8 +254,24 @@ makeGraphic time = Pz.Graphics
     )
   where
     theta = time * 2
+    t2 = theta * 0.5
     animValue1 = 400 * cos theta
     animValue2 = 100 * sin theta
+
+    [sk] = Pz.stroke 25 False $ Pz.Path
+        [
+            Pz.PathPoint (V2 100 300),
+            Pz.PathPoint (V2 (100 + 100 * sin t2) (300 - 100 * cos t2)),
+            Pz.PathPoint (V2 (300 - 100 * sin t2) (300 - 100 * cos t2)),
+            Pz.PathPoint (V2 300 300),
+            Pz.PathPoint (V2 300 100)
+        ]
+    [l, r] = Pz.stroke 10 True $ Pz.Path
+        [
+            Pz.PathPoint (V2 150 (300 + animValue2)),
+            Pz.arc (V2 200 150) 100 0 (-pi),
+            Pz.PathPoint (V2 250 (300 - animValue2))
+        ]
 
 main :: IO ()
 main = do
@@ -329,6 +346,7 @@ main = do
     Pz.freeEnvironment environment
 
     GLFW.terminate
+
 
 
 
