@@ -63,6 +63,7 @@ library
     	Graphics.Pizza,
     	Graphics.Pizza.Environment,
     	Graphics.Pizza.Graphic,
+    	Graphics.Pizza.Graphic.Curve,
     	Graphics.Pizza.Renderer,
     	Graphics.Pizza.RenderState,
     	Graphics.Pizza.RenderTarget,
