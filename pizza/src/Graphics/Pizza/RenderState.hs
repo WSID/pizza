@@ -117,10 +117,10 @@ newRenderState Renderer {..} = do
 
 
     renderStateVertex <- newTypedBufferN rendererEnvironment
-        Vk.BUFFER_USAGE_VERTEX_BUFFER_BIT 1024
+        Vk.BUFFER_USAGE_VERTEX_BUFFER_BIT 4096
 
     renderStateIndex <- newTypedBufferN rendererEnvironment
-        Vk.BUFFER_USAGE_INDEX_BUFFER_BIT 1024
+        Vk.BUFFER_USAGE_INDEX_BUFFER_BIT 4096
 
     descriptorSets <- Vk.allocateDescriptorSets
         environmentDevice
