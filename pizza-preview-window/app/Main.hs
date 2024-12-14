@@ -258,7 +258,17 @@ makeGraphic time = Pz.Graphics
     animValue1 = 400 * cos theta
     animValue2 = 100 * sin theta
 
-    [sk] = Pz.stroke 25 False $ Pz.Path
+    stroke25 = Pz.StrokeOption {
+        Pz.strokeThickness = 25,
+        Pz.strokeJoin = Pz.strokeJoinRound
+    }
+
+    stroke10 = Pz.StrokeOption {
+        Pz.strokeThickness = 10,
+        Pz.strokeJoin = Pz.strokeJoinBevel
+    }
+
+    [sk] = Pz.stroke stroke25 False $ Pz.Path
         [
             Pz.PathPoint (V2 100 300),
             Pz.PathPoint (V2 (100 + 100 * sin t2) (300 - 100 * cos t2)),
@@ -266,7 +276,7 @@ makeGraphic time = Pz.Graphics
             Pz.PathPoint (V2 300 300),
             Pz.PathPoint (V2 300 100)
         ]
-    [l, r] = Pz.stroke 10 True $ Pz.Path
+    [l, r] = Pz.stroke stroke10 True $ Pz.Path
         [
             Pz.PathPoint (V2 150 (300 + animValue2)),
             Pz.arc (V2 200 150) 100 0 (-pi),

@@ -45,7 +45,11 @@ testTreeRendering = "Rendering" ~: TestList [
             "Circle" ~: testPath pathCircle maskCircle,
             "Corner Bezier" ~: testPath pathCornerBezier maskCornerBezier,
             "Outline Circle" ~: testPath pathOutlineCircle maskOutlineCircle,
-            "Stroke Left Down" ~: testPath pathLeftDown maskLeftDown
+            "Strokes Join" ~: TestList [
+                "Miter" ~: testPath pathJoinMiter maskJoinMiter,
+                "Round" ~: testPath pathJoinRound maskJoinRound,
+                "Bevel" ~: testPath pathJoinBevel maskJoinBevel
+            ]
         ]
     ]
 
@@ -111,14 +115,24 @@ pathCornerBezier = [
     ]
 
 pathOutlineCircle :: [Graphics.Pizza.Path]
-pathOutlineCircle = stroke 20 True $ Graphics.Pizza.Path [ arc (V2 100 100) 90 0 (2 * pi) ]
+pathOutlineCircle = stroke (StrokeOption 20 strokeJoinMiter) True $ Graphics.Pizza.Path [ arc (V2 100 100) 90 0 (2 * pi) ]
 
-pathLeftDown :: [Graphics.Pizza.Path]
-pathLeftDown = stroke 20 False $ Graphics.Pizza.Path [
-        PathPoint (V2 0 10),
-        PathPoint (V2 190 10),
-        PathPoint (V2 190 200)
+joinTestPath :: Graphics.Pizza.Path
+joinTestPath = Graphics.Pizza.Path [
+        PathPoint (V2 0 50),
+        PathPoint (V2 150 50),
+        PathPoint (V2 150 200)
     ]
+
+pathJoinMiter :: [Graphics.Pizza.Path]
+pathJoinMiter = stroke (StrokeOption 100 strokeJoinMiter) False joinTestPath
+
+pathJoinRound :: [Graphics.Pizza.Path]
+pathJoinRound = stroke (StrokeOption 100 strokeJoinRound) False joinTestPath
+
+pathJoinBevel :: [Graphics.Pizza.Path]
+pathJoinBevel = stroke (StrokeOption 100 strokeJoinBevel) False joinTestPath
+
 -- Masks
 
 maskHalf :: [Bool]
@@ -162,10 +176,25 @@ maskOutlineCircle = contains <$> coordinates
   where
     contains coord = let dist = distance coord (V2 100 100) in (80 <= dist) && (dist <= 100)
 
-maskLeftDown :: [Bool]
-maskLeftDown = contains <$> coordinates
+maskJoinMiter :: [Bool]
+maskJoinMiter = contains <$> coordinates
   where
-    contains (V2 x y) = ((180 <= x) && (x <= 200)) || ((0 <= y) && (y <= 20))
+    contains (V2 x y) = ((100 <= x) && (x <= 200)) || ((0 <= y) && (y <= 100))
+
+maskJoinRound :: [Bool]
+maskJoinRound = contains <$> coordinates
+  where
+    inTop (V2 x y) = (0 <= y) && (y <= 100) && (0 <= x) && (x <= 150)
+    inRight (V2 x y) = (100 <= x) && (x <= 200) && (50 <= y) && (y <= 200)
+    inRound pos = distance pos (V2 150 50) <= 50
+    contains pos = inTop pos || inRight pos || inRound pos
+
+
+maskJoinBevel :: [Bool]
+maskJoinBevel = contains <$> coordinates
+  where
+    contains (V2 x y) =
+        (((100 <= x) && (x <= 200)) || ((0 <= y) && (y <= 100))) && (x - y <= 150)
 
 -- Test utility
 
