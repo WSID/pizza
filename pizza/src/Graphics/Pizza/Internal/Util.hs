@@ -7,9 +7,8 @@ import Linear
  -}
 newtype VPoly = VPoly { factors :: [V2 Float] } deriving (Eq, Show, Read)
 
-runVPoly :: Float -> VPoly -> V2 Float
-runVPoly x (VPoly f) = sum $ zipWith (^*) f $ iterate (* x) 1
-
+runVPoly :: VPoly -> Float -> V2 Float
+runVPoly (VPoly f) x = sum $ zipWith (^*) f $ iterate (* x) 1
 
 addVPoly :: VPoly -> VPoly -> VPoly
 addVPoly (VPoly a) (VPoly b) = VPoly $ go a b
@@ -43,8 +42,8 @@ derivVPoly (VPoly (_: fs)) = VPoly $ zipWith (*^) [1 ..] fs
 
 newtype Poly = Poly { polyFactors :: [Float] } deriving (Eq, Show, Read)
 
-runPoly :: Float -> Poly -> Float
-runPoly x (Poly f) = sum $ zipWith (*) f $ iterate (* x) 1
+runPoly :: Poly -> Float -> Float
+runPoly (Poly f) x = sum $ zipWith (*) f $ iterate (* x) 1
 
 polyFromFunc :: (Poly -> Poly) -> Poly
 polyFromFunc f = f idPoly

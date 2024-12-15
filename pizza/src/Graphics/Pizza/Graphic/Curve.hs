@@ -28,9 +28,10 @@ alongsideOf amount curve = Curve {
 
 fromVPoly :: VPoly -> Curve
 fromVPoly poly = Curve {
-    curvePosition = \t -> runVPoly t poly,
-    curveDirection = \t -> runVPoly t dp
+    curvePosition = runVPoly poly,
+    curveDirection = runVPoly dp
 }
   where
     dp = derivVPoly poly
+
 
