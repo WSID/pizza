@@ -6,49 +6,46 @@ import Graphics.Pizza.Graphic.Path
 import Graphics.Pizza.Internal.Geometry
 
 
+
+data LeftRight = LeftRight [PathPart] [PathPart]
+
+instance Semigroup LeftRight where
+    LeftRight al ar <> LeftRight bl br = LeftRight (al <> bl) (br <> ar)
+
+instance Monoid LeftRight where
+    mempty = LeftRight [] []
+
+
+
 data StrokeJoinPoint = StrokeJoinPoint {
     strokeJoinPosition :: V2 Float,
     strokeJoinDirPrev :: V2 Float,
     strokeJoinDirNext :: V2 Float
 }
 
-data StrokeOption = StrokeOption {
-    strokeThickness :: Float,
-    strokeJoin :: Float -> StrokeJoinPoint -> (Path, Path)
-}
+type StrokeJoin = Float -> StrokeJoinPoint -> LeftRight
 
-type StrokeJoin = Float -> StrokeJoinPoint -> (Path, Path)
+strokeJoinMiter :: Float -> StrokeJoinPoint -> LeftRight
+strokeJoinMiter thickness (StrokeJoinPoint pos adir bdir) = leftRightDir2 thickness pos adir bdir
 
-
-
-strokeJoinMiter :: Float -> StrokeJoinPoint -> (Path, Path)
-strokeJoinMiter thickness (StrokeJoinPoint pos adir bdir) = (
-        Path [PathPoint lp],
-        Path [PathPoint rp]
-    )
-  where
-    (lp, rp) = leftRightDir2 thickness pos adir bdir
-
-strokeJoinRound :: Float -> StrokeJoinPoint -> (Path, Path)
+strokeJoinRound :: Float -> StrokeJoinPoint -> LeftRight
 strokeJoinRound thickness (StrokeJoinPoint pos adir bdir)
-  | turnRight = (
-            Path [
+  | turnRight = LeftRight
+            [
                 arc pos (thickness * 0.5)
                     (aang + pi * 0.5)
                     (bangActual + pi * 0.5)
-            ],
-            Path [PathPoint rp]
-        )
-  | otherwise = (
-            Path [PathPoint lp],
-            Path [
+            ]
+            rp
+  | otherwise = LeftRight
+            lp
+            [
                 arc pos (thickness * 0.5)
                     (bangActual - pi * 0.5)
                     (aang - pi * 0.5)
             ]
-        )
   where
-    (lp, rp) = leftRightDir2 thickness pos adir bdir
+    LeftRight lp  rp = leftRightDir2 thickness pos adir bdir
     aang = unangle adir
     bang = unangle bdir
     bangActual
@@ -58,98 +55,105 @@ strokeJoinRound thickness (StrokeJoinPoint pos adir bdir)
 
     turnRight = adir `crossZ` bdir < 0
 
-strokeJoinBevel :: Float -> StrokeJoinPoint -> (Path, Path)
+strokeJoinBevel :: Float -> StrokeJoinPoint -> LeftRight
 strokeJoinBevel thickness (StrokeJoinPoint pos adir bdir)
-  | turnRight = (
-            Path [PathPoint la, PathPoint lb],
-            Path [PathPoint rp]
-        )
-  | otherwise = (
-            Path [PathPoint lp],
-            Path [PathPoint rb, PathPoint ra]
-        )
+  | turnRight = LeftRight (la <> lb) rp
+  | otherwise = LeftRight lp (rb <> ra)
   where
-    (lp, rp) = leftRightDir2 thickness pos adir bdir
-    (la, ra) = leftRightDir thickness pos adir
-    (lb, rb) = leftRightDir thickness pos bdir
+    LeftRight lp rp = leftRightDir2 thickness pos adir bdir
+    LeftRight la ra = leftRightDir thickness pos adir
+    LeftRight lb rb = leftRightDir thickness pos bdir
     turnRight = adir `crossZ` bdir < 0
+
+
+data StrokeOption = StrokeOption {
+    strokeThickness :: Float,
+    strokeJoin :: Float -> StrokeJoinPoint -> LeftRight
+}
+
+defStrokeOption :: StrokeOption
+defStrokeOption = StrokeOption {
+    strokeThickness = 1.0,
+    strokeJoin = strokeJoinMiter
+}
+
 stroke :: StrokeOption -> Bool -> Path -> [Path]
 stroke _ _ (Path []) = []
 stroke _ _ (Path [PathPoint _]) = []
 
 stroke option closed (Path [PathCurve curve])
-  | closed      = [ Path [lc], Path [rc] ]
-  | otherwise   = [ Path [lc, rc] ]
+  | closed      = [ Path lc, Path rc ]
+  | otherwise   = [ Path (lc <> rc) ]
   where
-    (lc, rc) = leftRightCurve (strokeThickness option) curve
+    LeftRight lc rc = leftRightCurve (strokeThickness option) curve
 
 stroke option closed (Path (p: q: ps))
   | closed      = [Path lres, Path rres]
   | otherwise   = [Path (lres <> rres)]
   where
-    thickness = strokeThickness option
-
-    onPoint pos dir [] = (ljoin, rjoin)
-      where
-        (ljoin, rjoin) = case lastDir of
-            Nothing -> let (lp, rp) = leftRightDir thickness pos dir in ([PathPoint lp], [PathPoint rp])
-            Just ld -> let (Path lp, Path rp) = strokeJoin option thickness (StrokeJoinPoint pos dir ld) in (lp, rp)
-
-    onPoint pos dir (cp: cps) = (ljoin <> nextLeft, nextRight <> rjoin)
-      where
-        nextPos = pathPartStart cp
-        nextDir = signorm (nextPos - pos)
-        (Path ljoin, Path rjoin) = strokeJoin option thickness (StrokeJoinPoint pos dir nextDir)
-        (nextLeft, nextRight) = onIter nextDir cp cps
-
-    onIter prevDir (PathPoint a) rest = onPoint a prevDir rest
-    onIter prevDir (PathCurve c) rest =
-        (
-            aljoin <> [lc] <> nextLeft,
-            nextRight <> [rc] <> arjoin
-        )
-      where
-        apos = curvePosition c 0
-        bpos = curvePosition c 1
-        adir = curveDirection c 0
-        bdir = curveDirection c 1
-        (lc, rc) = leftRightCurve thickness c
-        (Path aljoin, Path arjoin) = strokeJoin option thickness (StrokeJoinPoint apos prevDir adir)
-        (nextLeft, nextRight) = onPoint bpos bdir rest
-
-
     headPos = pathPartStart p
     lastPos = pathPartEnd (last ps)
     lastDir = if closed
         then Just $ signorm (headPos - lastPos)
         else Nothing
 
-    (lres, rres) = case lastDir of
-        Just ld -> onIter ld p (q : ps)
-        Nothing -> let
-                headDir = signorm (pathPartStart q - pathPartEnd p)
-            in case p of
-                PathPoint a -> ([PathPoint lp] <> nl, nr <> [PathPoint rp])
-                  where
-                    (lp, rp) = leftRightDir thickness a headDir
-                    (nl, nr) = onIter headDir q ps
-                PathCurve c -> ([lc] <> nl, nr <> [rc])
-                  where
-                    bpos = curvePosition c 1
-                    bdir = curveDirection c 1
-                    (lc, rc) = leftRightCurve thickness c
-                    (nl, nr) = onPoint bpos bdir (q: ps)
+    LeftRight lres rres = case lastDir of
+        Just ld -> strokeIter option lastDir ld p (q: ps)
+        Nothing -> strokeStart option p q ps
 
 
+strokeStart :: StrokeOption -> PathPart -> PathPart -> [PathPart] -> LeftRight
+strokeStart option (PathPoint pos) q ps =
+    leftRightDir (strokeThickness option) pos nextDir <>
+    strokeIter option Nothing nextDir q ps
+  where
+    next = pathPartStart q
+    nextDir = signorm (next - pos)
 
-leftRightDir :: Float -> V2 Float -> V2 Float -> (V2 Float, V2 Float)
-leftRightDir thickness p d = (p + h, p - h)
+strokeStart option (PathCurve curve) q ps =
+    leftRightCurve (strokeThickness option) curve <>
+    strokePoint option Nothing bpos bdir (q: ps)
+  where
+    bpos = curvePosition curve 1
+    bdir = curveDirection curve 1
+
+strokePoint :: StrokeOption -> Maybe (V2 Float) -> V2 Float -> V2 Float -> [PathPart] -> LeftRight
+strokePoint option lastDir prevDir pos [] = case lastDir of
+    Nothing -> leftRightDir thickness pos prevDir
+    Just ld -> strokeJoin option thickness (StrokeJoinPoint pos prevDir ld)
+  where
+    thickness = strokeThickness option
+
+strokePoint option lastDir prevDir pos (p: ps) =
+    strokeJoin option thickness (StrokeJoinPoint pos prevDir nextDir) <>
+    strokeIter option lastDir nextDir p ps
+  where
+    thickness = strokeThickness option
+    nextPos = pathPartStart p
+    nextDir = signorm (nextPos - pos)
+
+strokeIter :: StrokeOption -> Maybe (V2 Float) -> V2 Float -> PathPart -> [PathPart] -> LeftRight
+strokeIter option lastDir prevDir (PathPoint pos) rest = strokePoint option lastDir prevDir pos rest
+strokeIter option lastDir prevDir (PathCurve curve) rest =
+    strokeJoin option thickness (StrokeJoinPoint apos prevDir adir) <>
+    leftRightCurve thickness curve <>
+    strokePoint option lastDir bdir bpos rest
+  where
+    thickness = strokeThickness option
+    apos = curvePosition curve 0
+    bpos = curvePosition curve 1
+    adir = curveDirection curve 0
+    bdir = curveDirection curve 1
+
+
+leftRightDir :: Float -> V2 Float -> V2 Float -> LeftRight
+leftRightDir thickness p d = LeftRight [PathPoint (p + h)] [PathPoint (p - h)]
   where
     h = perp d ^* (thickness * 0.5)
 
-leftRightDir2 :: Float -> V2 Float -> V2 Float -> V2 Float -> (V2 Float, V2 Float)
+leftRightDir2 :: Float -> V2 Float -> V2 Float -> V2 Float -> LeftRight
 leftRightDir2 thickness p d1 d2 = case l of
-    Just left -> (left, p + p - left)
+    Just left -> LeftRight [PathPoint left] [PathPoint (p + p - left)]
     Nothing -> leftRightDir thickness p d1
   where
     e1 = perp d1 ^* (thickness * 0.5)
@@ -158,11 +162,12 @@ leftRightDir2 thickness p d1 d2 = case l of
     l2 = p + e2
     l = lineIntersect l1 d1 l2 d2
 
-leftRightCurve :: Float -> Curve -> (PathPart, PathPart)
-leftRightCurve thickness curve = (
-        PathCurve $ half `alongsideOf` curve,
-        PathCurve $ half `alongsideOf` Curve.reverse curve
-    )
+leftRightCurve :: Float -> Curve -> LeftRight
+leftRightCurve thickness curve = LeftRight
+    [PathCurve $ half `alongsideOf` curve]
+    [PathCurve $ half `alongsideOf` Curve.reverse curve]
   where
     half = thickness * 0.5
+
+
 
