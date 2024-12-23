@@ -22,6 +22,7 @@ import Linear
 import Graphics.Pizza
 import Graphics.Pizza.Internal.Util
 import Graphics.Pizza.Internal.Geometry
+import Graphics.Pizza.Graphic.Curve
 
 -- test internal
 import TestRendering
@@ -63,5 +64,29 @@ main = do
                         lineIntersect (V2 0 0) (V2 2 1) (V2 (-2) 3) (V2 2 (-1)) ~?= Just (V2 2 1)
                 ]
             ],
+            "Graphics" ~: TestList [
+                "CurveRunner" ~: TestList [
+                    "Simple Case" ~: do
+                        let curve = lineCurve (V2 0 0) (V2 100 0)
+                        let r0 = mkCurveRunner curve 16
+                        let CurveRunning t1 r1 = runCurveRunner r0 10
+                        let CurveRunning t2 r2 = runCurveRunner r1 30
+                        (t1, t2) ~?= (0.1, 0.4),
+
+                    "Arc" ~: do
+                        let PathCurve curve = arc (V2 0 0) 100 0 2
+                        let r0 = mkCurveRunner curve 256
+                        let CurveRunning t1 r1 = runCurveRunner r0 20
+                        let CurveRunning t2 r2 = runCurveRunner r1 40
+                        assertBool "t1 ~= 0.1" (abs (t1 - 0.1) < 0.001)
+                        assertBool "t2 ~= 0.3" (abs (t2 - 0.3) < 0.001)
+                ]
+            ],
             testTreeRendering
         ]
+
+lineCurve :: V2 Float -> V2 Float -> Curve
+lineCurve start end = Curve {
+  curvePosition = \t -> lerp t start end,
+  curveDirection = const (end - start)
+}

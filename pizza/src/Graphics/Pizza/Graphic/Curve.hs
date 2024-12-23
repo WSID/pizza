@@ -34,4 +34,39 @@ fromVPoly poly = Curve {
   where
     dp = derivVPoly poly
 
+data CurveRunnerEntry = CurveRunnerEntry {
+    curveRunnerEntryDistance :: Float,
+    curveRunnerEntryStart :: Float,
+    curveRunnerEntryEnd :: Float
+}
+
+curveRunnerEntryAt :: CurveRunnerEntry -> Float -> Float
+curveRunnerEntryAt (CurveRunnerEntry d s e) x = s + (e - s) * (x / d)
+
+data CurveRunner = CurveRunner {
+    curveRunnerEntries :: [CurveRunnerEntry],
+    curveRunnerLeftover :: Float
+}
+
+mkCurveRunner :: Curve -> Int -> CurveRunner
+mkCurveRunner curve n
+  | n <= 0 = CurveRunner [] 0
+  | otherwise = CurveRunner (zipWith3 CurveRunnerEntry dists ts (tail ts)) 0
+  where
+    ts = fmap (\i -> fromIntegral i / fromIntegral n) [0 .. n]
+    poss = fmap (curvePosition curve) ts
+    dists = zipWith distance poss (tail poss)
+
+data CurveRunResult = CurveRunning Float CurveRunner | CurveDone Float
+
+runCurveRunner :: CurveRunner -> Float -> CurveRunResult
+
+runCurveRunner (CurveRunner [] _) l = CurveDone l
+
+runCurveRunner (CurveRunner (e: es) leftover) l
+  | nextLeftover > entryDist = runCurveRunner (CurveRunner es 0) (nextLeftover - entryDist)
+  | otherwise = CurveRunning (curveRunnerEntryAt e nextLeftover) (CurveRunner (e: es) nextLeftover)
+  where
+    entryDist = curveRunnerEntryDistance e
+    nextLeftover = l + leftover
 
