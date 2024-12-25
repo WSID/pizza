@@ -112,7 +112,7 @@ strokeStart option (PathPoint pos) q ps =
 
 strokeStart option (PathCurve curve) q ps =
     leftRightCurve (strokeThickness option) curve <>
-    strokePoint option Nothing bpos bdir (q: ps)
+    strokePoint option Nothing bdir bpos (q: ps)
   where
     bpos = curvePosition curve 1
     bdir = curveDirection curve 1
