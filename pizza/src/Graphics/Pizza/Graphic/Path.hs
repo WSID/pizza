@@ -60,7 +60,7 @@ bezier start controls end = PathCurve . fromVPoly $ bezierPoly start controls en
 arc :: V2 Float -> Float -> Float -> Float -> PathPart
 arc center radius start end = PathCurve $ Curve {
     curvePosition = \t -> center + angle (start + (end - start) * t) ^* radius,
-    curveDirection = \t -> negate $ perp $ angle (start + (end - start) * t)
+    curveDirection = \t -> perp $ angle (start + (end - start) * t)
 }
 
 -- Paths
