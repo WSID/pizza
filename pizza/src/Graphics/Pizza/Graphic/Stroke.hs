@@ -21,7 +21,7 @@ data StrokeJoinPoint = StrokeJoinPoint {
     strokeJoinPosition :: V2 Float,
     strokeJoinDirPrev :: V2 Float,
     strokeJoinDirNext :: V2 Float
-}
+} deriving (Show)
 
 type StrokeJoin = Float -> StrokeJoinPoint -> LeftRight
 
@@ -168,6 +168,7 @@ leftRightCurve thickness curve = LeftRight
     [PathCurve $ half `alongsideOf` Curve.reverse curve]
   where
     half = thickness * 0.5
+
 
 
 
