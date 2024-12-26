@@ -1,5 +1,6 @@
 module Graphics.Pizza.Graphic (
     module Graphics.Pizza.Graphic.Curve,
+    module Graphics.Pizza.Graphic.Dash,
     module Graphics.Pizza.Graphic.Path,
     module Graphics.Pizza.Graphic.Stroke,
     Graphics ( .. ),
@@ -10,6 +11,7 @@ module Graphics.Pizza.Graphic (
 import Linear
 
 import Graphics.Pizza.Graphic.Curve
+import Graphics.Pizza.Graphic.Dash
 import Graphics.Pizza.Graphic.Stroke
 import Graphics.Pizza.Graphic.Path
 

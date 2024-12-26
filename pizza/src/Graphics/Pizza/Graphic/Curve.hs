@@ -26,6 +26,13 @@ alongsideOf amount curve = Curve {
     curveDirection = curveDirection curve
 }
 
+subCurve :: Float -> Float -> Curve -> Curve
+subCurve start end (Curve pos dir) = Curve (pos . trans) (dir . trans)
+  where
+    len = end - start
+    trans t = start + len * t
+
+
 fromVPoly :: VPoly -> Curve
 fromVPoly poly = Curve {
     curvePosition = runVPoly poly,

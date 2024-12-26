@@ -215,37 +215,7 @@ createSwapchain Pz.Environment {..} SurfaceState {..} width height = do
 
 makeGraphic :: Float -> Pz.Graphics
 makeGraphic time = Pz.Graphics
-    [
-        Pz.Path
-            [
-                Pz.bezier
-                    (V2 0 200)
-                    [
-                        V2 0 (0 - animValue1),
-                        V2 400 (400 + animValue1)
-                    ]
-                    (V2 400 200),
-                Pz.arc
-                    (V2 (300 + animValue2) 200)
-                    (100 - animValue2)
-                    0
-                    (negate pi),
-                Pz.arc
-                    (V2 (100 + animValue2) 200)
-                    (100 + animValue2)
-                    0
-                    pi
-            ],
-        Pz.Path
-            [
-                Pz.arc
-                    (V2 200 200)
-                    (100 + animValue2)
-                    0
-                    (2 * pi)
-            ],
-        sk, l, r
-    ]
+    (paths <> dashedPaths)
     (Pz.PatternRadial
         (V2 (200 + 400 * cos theta) (400 + 400 * sin theta))
         400
@@ -254,34 +224,60 @@ makeGraphic time = Pz.Graphics
     )
   where
     theta = time * 2
-    t2 = theta * 0.5
     animValue1 = 400 * cos theta
     animValue2 = 100 * sin theta
 
-    stroke25 = Pz.StrokeOption {
-        Pz.strokeThickness = 25,
-        Pz.strokeJoin = Pz.strokeJoinRound
-    }
+    paths =
+        [
+            Pz.Path
+                [
+                    Pz.bezier
+                        (V2 0 200)
+                        [
+                            V2 0 (0 - animValue1),
+                            V2 400 (400 + animValue1)
+                        ]
+                        (V2 400 200),
+                    Pz.arc
+                        (V2 (300 + animValue2) 200)
+                        (100 - animValue2)
+                        0
+                        (negate pi),
+                    Pz.arc
+                        (V2 (100 + animValue2) 200)
+                        (100 + animValue2)
+                        0
+                        pi
+                ],
+            Pz.Path
+                [
+                    Pz.arc
+                        (V2 200 200)
+                        (100 + animValue2)
+                        0
+                        (2 * pi)
+                ]
+        ]
+
+    dashes = Pz.dash
+        True
+        (50 + 50 * sin theta : cycle [50, 50, 50, 50])
+        (Pz.Path [
+                Pz.PathPoint (V2 100 150),
+                Pz.arc (V2 300 200) 50 (pi * (-0.5)) (pi * (0.5)),
+                Pz.arc (V2 100 200) 50 (pi * (0.5)) (pi * (1.5))
+            ]
+        )
 
     stroke10 = Pz.StrokeOption {
         Pz.strokeThickness = 10,
-        Pz.strokeJoin = Pz.strokeJoinBevel
+        Pz.strokeJoin = Pz.strokeJoinMiter
     }
 
-    [sk] = Pz.stroke stroke25 False $ Pz.Path
-        [
-            Pz.PathPoint (V2 100 300),
-            Pz.PathPoint (V2 (100 + 100 * sin t2) (300 - 100 * cos t2)),
-            Pz.PathPoint (V2 (300 - 100 * sin t2) (300 - 100 * cos t2)),
-            Pz.PathPoint (V2 300 300),
-            Pz.PathPoint (V2 300 100)
-        ]
-    [l, r] = Pz.stroke stroke10 True $ Pz.Path
-        [
-            Pz.PathPoint (V2 150 (300 + animValue2)),
-            Pz.arc (V2 200 150) 100 0 (-pi),
-            Pz.PathPoint (V2 250 (300 - animValue2))
-        ]
+
+    dashedPaths = (Pz.stroke stroke10 False) =<< dashes
+
+
 
 main :: IO ()
 main = do
@@ -356,6 +352,9 @@ main = do
     Pz.freeEnvironment environment
 
     GLFW.terminate
+
+
+
 
 
 

@@ -49,6 +49,12 @@ testTreeRendering = "Rendering" ~: TestList [
                 "Miter" ~: testPath pathJoinMiter maskJoinMiter,
                 "Round" ~: testPath pathJoinRound maskJoinRound,
                 "Bevel" ~: testPath pathJoinBevel maskJoinBevel
+            ],
+            "Dash" ~: TestList [
+                "Line 1" ~: testPath pathDashLine1 maskDashLine1,
+                "Line 2" ~: testPath pathDashLine2 maskDashLine2,
+                "Curve 1" ~: testPath pathDashCurve1 maskDashCurve1,
+                "Curve 2" ~: testPath pathDashCurve2 maskDashCurve2
             ]
         ]
     ]
@@ -133,6 +139,31 @@ pathJoinRound = stroke (StrokeOption 100 strokeJoinRound) False joinTestPath
 pathJoinBevel :: [Graphics.Pizza.Path]
 pathJoinBevel = stroke (StrokeOption 100 strokeJoinBevel) False joinTestPath
 
+pathDashLine1 :: [Graphics.Pizza.Path]
+pathDashLine1 = stroke (StrokeOption 100 strokeJoinMiter) False =<<
+    dash True [50, 50, 50]
+        (Graphics.Pizza.Path [PathPoint (V2 0 100), PathPoint (V2 200 100)])
+
+pathDashLine2 :: [Graphics.Pizza.Path]
+pathDashLine2 = stroke (StrokeOption 100 strokeJoinMiter) False =<<
+    dash False [50, 50]
+        (Graphics.Pizza.Path [PathPoint (V2 0 100), PathPoint (V2 200 100)])
+
+pathDashCurve1 :: [Graphics.Pizza.Path]
+pathDashCurve1 = stroke (StrokeOption 100 strokeJoinMiter) False =<<
+    dash True [50, 50, 50]
+        (Graphics.Pizza.Path [arc (V2 0 0) 150 0 (0.5 * pi)])
+
+pathDashCurve2 :: [Graphics.Pizza.Path]
+pathDashCurve2 = stroke (StrokeOption 20 strokeJoinMiter) False =<<
+    dash True [50, 100, 100, 100, 50]
+        (Graphics.Pizza.Path
+            [
+                arc (V2 100 100) 100 (1 - pi) (- pi),
+                arc (V2 100 100) 100 (0) (1)
+            ]
+        )
+
 -- Masks
 
 maskHalf :: [Bool]
@@ -195,6 +226,53 @@ maskJoinBevel = contains <$> coordinates
   where
     contains (V2 x y) =
         (((100 <= x) && (x <= 200)) || ((0 <= y) && (y <= 100))) && (x - y <= 150)
+
+maskDashLine1 :: [Bool]
+maskDashLine1 = contains <$> coordinates
+  where
+    contains (V2 x y) =
+        (
+            ((0 <= x) && (x <= 50)) ||
+            ((100 <= x) && (x <= 150))
+        )
+        && ((50 <= y) && (y <= 150))
+
+maskDashLine2 :: [Bool]
+maskDashLine2 = contains <$> coordinates
+  where
+    contains (V2 x y) =
+        ((50 <= x) && (x <= 100))
+        && ((50 <= y) && (y <= 150))
+
+maskDashCurve1 :: [Bool]
+maskDashCurve1 = contains <$> coordinates
+  where
+    contains p = let r = norm p; t150 = unangle p * 150 in
+        ((100 <= r) && (r <= 200)) &&
+        (
+            ((0 <= t150) && (t150 <= 50)) ||
+            ((100 <= t150) && (t150 <= 150))
+        )
+
+maskDashCurve2 :: [Bool]
+maskDashCurve2 = contains <$> coordinates
+  where
+    contains p = let
+        V2 x y = p
+        d = p  - V2 100 100
+        r = norm d
+        t100 = unangle d * 100
+        in
+        (
+            ((50 <= x) && (x <= 150) && (90 <= y) && (y <= 110)) ||
+            (
+                (90 <= r) && (r <= 110) &&
+                (
+                    ((50 <= t100) && (t100 <= 100)) ||
+                    ((100 * pi + 50 <= t100 ) && (t100 <= 100 * pi + 100))
+                )
+            )
+        )
 
 -- Test utility
 
