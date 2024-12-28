@@ -4,7 +4,9 @@ module Graphics.Pizza.Graphic (
     module Graphics.Pizza.Graphic.Path,
     module Graphics.Pizza.Graphic.Stroke,
     Graphics ( .. ),
-    Pattern ( .. )
+    Pattern ( .. ),
+
+    dashStroke
 ) where
 
 -- linear
@@ -23,3 +25,6 @@ data Pattern =
     PatternRadial (V2 Float) Float (V4 Float) (V4 Float)
 
 
+dashStroke :: StrokeOption -> Dash -> [Path]
+dashStroke option (Dash ps) = stroke option False =<< ps
+dashStroke option (DashClose p) = stroke option True p

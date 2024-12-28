@@ -5,7 +5,6 @@ import Linear
 import Graphics.Pizza.Graphic.Curve
 import Graphics.Pizza.Graphic.Path
 
-
 data DashPattern = DashPattern Bool [Float] deriving (Eq, Show)
 
 dashPatternNone :: DashPattern
@@ -31,6 +30,8 @@ data DashState = DashState {
     dashStatePattern :: [Float],
     dashStateAccum :: [[PathPart]]
 }
+
+data Dash = Dash [Path] | DashClose Path
 
 dashBetween :: V2 Float -> V2 Float -> DashState -> DashState
 dashBetween start end = go 0
@@ -73,14 +74,22 @@ dashCurve curve state = go 0 (mkCurveRunner curve 32) state
               Nothing -> s {dashStatePattern = rl: ps}
               Just wip -> DashState (Just (wip <> [PathCurve (subCurve ts 1 curve)])) (rl: ps) (dashStateAccum s)
 
-dash :: DashPattern -> Path -> [Path]
-dash _ (Path []) = []
-dash (DashPattern on pat) (Path ps) = Path <$> maybe accum (\o -> accum <> [o]) lon
-  where
-    go [] s = s
-    go [PathPoint p] s = dashPoint p s
-    go [PathCurve c] s = dashCurve c s
-    go (PathPoint p: q: r) s = go (q: r) $ dashBetween p (pathPartStart q) $ dashPoint p s
-    go (PathCurve c: q: r) s = go (q: r) $ dashBetween (curvePosition c 1) (pathPartStart q) $ dashCurve c s
-    DashState lon _ accum = go ps (DashState (if on then Just [] else Nothing) pat [])
+dashPathPart :: PathPart -> DashState -> DashState
+dashPathPart (PathPoint p) = dashPoint p
+dashPathPart (PathCurve c) = dashCurve c
 
+dash :: Bool -> DashPattern -> Path -> Dash
+dash _ _ (Path []) = Dash []
+dash close (DashPattern on pat) (Path ps) = case (close, lon) of
+    (True, Just wip) -> case accum of
+      [] -> DashClose $ Path wip
+      (p: q) -> Dash $ Path <$> (wip <> p : q)
+    _ -> Dash $ Path <$> maybe accum (\o -> accum <> [o]) lon
+  where
+    pathStart = pathPartStart $ head ps
+    go [] s = s
+    go [p] s = if close
+        then dashBetween (pathPartEnd p) pathStart $ dashPathPart p s
+        else dashPathPart p s
+    go (p: q: r) s = go (q: r) $ dashBetween (pathPartEnd p) (pathPartStart q) $ dashPathPart p s
+    DashState lon _ accum = go ps (DashState (if on then Just [] else Nothing) pat [])

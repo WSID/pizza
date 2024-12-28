@@ -54,7 +54,9 @@ testTreeRendering = "Rendering" ~: TestList [
                 "Line 1" ~: testPath pathDashLine1 maskDashLine1,
                 "Line 2" ~: testPath pathDashLine2 maskDashLine2,
                 "Curve 1" ~: testPath pathDashCurve1 maskDashCurve1,
-                "Curve 2" ~: testPath pathDashCurve2 maskDashCurve2
+                "Curve 2" ~: testPath pathDashCurve2 maskDashCurve2,
+                "Box" ~: testPath pathDashBox maskDashBox,
+                "Box2" ~: testPath pathDashBox2 maskDashBox2
             ]
         ]
     ]
@@ -140,29 +142,65 @@ pathJoinBevel :: [Graphics.Pizza.Path]
 pathJoinBevel = stroke (StrokeOption 100 strokeJoinBevel) False joinTestPath
 
 pathDashLine1 :: [Graphics.Pizza.Path]
-pathDashLine1 = stroke (StrokeOption 100 strokeJoinMiter) False =<<
-    dash (DashPattern True [50, 50, 50])
+pathDashLine1 = dashStroke
+    (StrokeOption 100 strokeJoinMiter)
+    (dash False (DashPattern True [50, 50, 50])
         (Graphics.Pizza.Path [PathPoint (V2 0 100), PathPoint (V2 200 100)])
+    )
 
 pathDashLine2 :: [Graphics.Pizza.Path]
-pathDashLine2 = stroke (StrokeOption 100 strokeJoinMiter) False =<<
-    dash (DashPattern False [50, 50])
+pathDashLine2 = dashStroke
+    (StrokeOption 100 strokeJoinMiter)
+    (dash False (DashPattern False [50, 50])
         (Graphics.Pizza.Path [PathPoint (V2 0 100), PathPoint (V2 200 100)])
+    )
 
 pathDashCurve1 :: [Graphics.Pizza.Path]
-pathDashCurve1 = stroke (StrokeOption 100 strokeJoinMiter) False =<<
-    dash (DashPattern True [50, 50, 50])
+pathDashCurve1 = dashStroke
+    (StrokeOption 100 strokeJoinMiter)
+    (dash False (DashPattern True [50, 50, 50])
         (Graphics.Pizza.Path [arc (V2 0 0) 150 0 (0.5 * pi)])
+    )
 
 pathDashCurve2 :: [Graphics.Pizza.Path]
-pathDashCurve2 = stroke (StrokeOption 20 strokeJoinMiter) False =<<
-    dash (DashPattern True [50, 100, 100, 100, 50])
+pathDashCurve2 = dashStroke
+    (StrokeOption 20 strokeJoinMiter)
+    (dash False (DashPattern True [50, 100, 100, 100, 50])
         (Graphics.Pizza.Path
             [
                 arc (V2 100 100) 100 (1 - pi) (- pi),
                 arc (V2 100 100) 100 (0) (1)
             ]
         )
+    )
+
+pathDashBox :: [Graphics.Pizza.Path]
+pathDashBox = dashStroke
+    (StrokeOption 20 strokeJoinMiter)
+    (dash True (DashPattern False [60, 60, 120, 60, 120, 60, 120, 60])
+        (Graphics.Pizza.Path
+            [
+                PathPoint (V2 10 10),
+                PathPoint (V2 190 10),
+                PathPoint (V2 190 190),
+                PathPoint (V2 10 190)
+            ]
+        )
+    )
+
+pathDashBox2 :: [Graphics.Pizza.Path]
+pathDashBox2 = dashStroke
+    (StrokeOption 20 strokeJoinMiter)
+    (dash True (DashPattern True [60, 60, 120, 60, 120, 60, 120, 60])
+        (Graphics.Pizza.Path
+            [
+                PathPoint (V2 10 10),
+                PathPoint (V2 190 10),
+                PathPoint (V2 190 190),
+                PathPoint (V2 10 190)
+            ]
+        )
+    )
 
 -- Masks
 
@@ -274,7 +312,32 @@ maskDashCurve2 = contains <$> coordinates
             )
         )
 
+maskDashBox :: [Bool]
+maskDashBox = contains <$> coordinates
+  where
+    contains p = or [
+            inBox (V2 0 70) (V2 20 130) p,
+            inBox (V2 70 0) (V2 130 20) p,
+            inBox (V2 180 70) (V2 200 130) p,
+            inBox (V2 70 180) (V2 130 200) p
+        ]
+
+maskDashBox2 :: [Bool]
+maskDashBox2 = contains <$> coordinates
+  where
+    contains p = and [
+            not $ inBox (V2 20 20) (V2 180 180) p,
+            not $ inBox (V2 70 0) (V2 130 200) p,
+            not $ inBox (V2 0 70) (V2 200 130) p
+        ]
+
 -- Test utility
+
+inRange :: (Ord a) => a -> a -> a -> Bool
+inRange s e v = (min s e <= v) && (v <= max s e)
+
+inBox :: (Ord a) => V2 a -> V2 a -> V2 a -> Bool
+inBox s e v = and (inRange <$> s <*> e <*> v)
 
 convertColor :: V4 Float -> V4 Word8
 convertColor c = floor . min 255 . (* 256) <$> c
