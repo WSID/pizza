@@ -80,6 +80,26 @@ main = do
                         let CurveRunning t2 r2 = runCurveRunner r1 40
                         assertBool "t1 ~= 0.1" (abs (t1 - 0.1) < 0.001)
                         assertBool "t2 ~= 0.3" (abs (t2 - 0.3) < 0.001)
+                ],
+                "DashPattern" ~: TestList [
+                    "start on" ~: TestList [
+                        "none" ~: dashPatternStartOn dashPatternNone ~?= False,
+                        "full" ~: dashPatternStartOn dashPatternFull ~?= True,
+                        "1" ~: dashPatternStartOn (DashPattern True [10, 20]) ~?= True,
+                        "2" ~: dashPatternStartOn (DashPattern False [10, 20, 30]) ~?= False
+                    ],
+                    "end on" ~: TestList [
+                        "none" ~: dashPatternEndOn dashPatternNone ~?= False,
+                        "full" ~: dashPatternEndOn dashPatternFull ~?= True,
+                        "1" ~: dashPatternEndOn (DashPattern True [10, 20]) ~?= True,
+                        "2" ~: dashPatternEndOn (DashPattern False [10, 20, 30]) ~?= True
+                    ],
+                    "cons" ~: TestList [
+                        "none" ~: dashPatternCons dashPatternNone ~?= (False, Nothing),
+                        "full" ~: dashPatternCons dashPatternFull ~?= (True, Nothing),
+                        "1" ~: dashPatternCons (DashPattern True [10, 20]) ~?= (True, Just (10, DashPattern False [20])),
+                        "2" ~: dashPatternCons (DashPattern False [10, 20, 30]) ~?= (False, Just (10, DashPattern True [20, 30]))
+                    ]
                 ]
             ],
             testTreeRendering

@@ -260,8 +260,7 @@ makeGraphic time = Pz.Graphics
         ]
 
     dashes = Pz.dash
-        True
-        (50 + 50 * sin theta : cycle [50, 50, 50, 50])
+        (Pz.DashPattern True (50 + 50 * sin theta : cycle [50, 50, 50, 50]))
         (Pz.Path [
                 Pz.PathPoint (V2 100 150),
                 Pz.arc (V2 300 200) 50 (pi * (-0.5)) (pi * (0.5)),

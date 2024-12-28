@@ -6,6 +6,26 @@ import Graphics.Pizza.Graphic.Curve
 import Graphics.Pizza.Graphic.Path
 
 
+data DashPattern = DashPattern Bool [Float] deriving (Eq, Show)
+
+dashPatternNone :: DashPattern
+dashPatternNone = DashPattern False []
+
+dashPatternFull :: DashPattern
+dashPatternFull = DashPattern True []
+
+dashPatternStartOn :: DashPattern -> Bool
+dashPatternStartOn (DashPattern on _) = on
+
+dashPatternEndOn :: DashPattern -> Bool
+dashPatternEndOn (DashPattern on []) = on
+dashPatternEndOn (DashPattern on [_]) = not on
+dashPatternEndOn (DashPattern on (_: _: ps)) = dashPatternEndOn (DashPattern on ps)
+
+dashPatternCons :: DashPattern -> (Bool, Maybe (Float, DashPattern))
+dashPatternCons (DashPattern on []) = (on, Nothing)
+dashPatternCons (DashPattern on (p: ps)) = (on, Just (p, DashPattern (not on) ps))
+
 data DashState = DashState {
     dashStateOn :: Maybe [PathPart],
     dashStatePattern :: [Float],
@@ -53,9 +73,9 @@ dashCurve curve state = go 0 (mkCurveRunner curve 32) state
               Nothing -> s {dashStatePattern = rl: ps}
               Just wip -> DashState (Just (wip <> [PathCurve (subCurve ts 1 curve)])) (rl: ps) (dashStateAccum s)
 
-dash :: Bool -> [Float] -> Path -> [Path]
-dash _ _ (Path []) = []
-dash on pat (Path ps) = Path <$> maybe accum (\o -> accum <> [o]) lon
+dash :: DashPattern -> Path -> [Path]
+dash _ (Path []) = []
+dash (DashPattern on pat) (Path ps) = Path <$> maybe accum (\o -> accum <> [o]) lon
   where
     go [] s = s
     go [PathPoint p] s = dashPoint p s

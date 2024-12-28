@@ -141,22 +141,22 @@ pathJoinBevel = stroke (StrokeOption 100 strokeJoinBevel) False joinTestPath
 
 pathDashLine1 :: [Graphics.Pizza.Path]
 pathDashLine1 = stroke (StrokeOption 100 strokeJoinMiter) False =<<
-    dash True [50, 50, 50]
+    dash (DashPattern True [50, 50, 50])
         (Graphics.Pizza.Path [PathPoint (V2 0 100), PathPoint (V2 200 100)])
 
 pathDashLine2 :: [Graphics.Pizza.Path]
 pathDashLine2 = stroke (StrokeOption 100 strokeJoinMiter) False =<<
-    dash False [50, 50]
+    dash (DashPattern False [50, 50])
         (Graphics.Pizza.Path [PathPoint (V2 0 100), PathPoint (V2 200 100)])
 
 pathDashCurve1 :: [Graphics.Pizza.Path]
 pathDashCurve1 = stroke (StrokeOption 100 strokeJoinMiter) False =<<
-    dash True [50, 50, 50]
+    dash (DashPattern True [50, 50, 50])
         (Graphics.Pizza.Path [arc (V2 0 0) 150 0 (0.5 * pi)])
 
 pathDashCurve2 :: [Graphics.Pizza.Path]
 pathDashCurve2 = stroke (StrokeOption 20 strokeJoinMiter) False =<<
-    dash True [50, 100, 100, 100, 50]
+    dash (DashPattern True [50, 100, 100, 100, 50])
         (Graphics.Pizza.Path
             [
                 arc (V2 100 100) 100 (1 - pi) (- pi),
