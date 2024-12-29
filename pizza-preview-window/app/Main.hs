@@ -266,15 +266,6 @@ makeGraphic time = Pz.Graphics
                 Pz.arc (V2 100 100) 50 (pi * (0.5)) (pi * (1.5))
             ])
 
-    dashes = Pz.dash
-        True
-        (Pz.DashPattern True (50 + 50 * sin theta : cycle [50, 50, 50, 50]))
-        (Pz.Path [
-                Pz.arc (V2 300 300) 50 (pi * (-0.5)) (pi * (0.5)),
-                Pz.arc (V2 100 300) 50 (pi * (0.5)) (pi * (1.5))
-            ]
-        )
-
     stroke10 = Pz.StrokeOption {
         Pz.strokeThickness = 10,
         Pz.strokeJoin = Pz.strokeJoinMiter
@@ -285,7 +276,15 @@ makeGraphic time = Pz.Graphics
         Pz.strokeJoin = Pz.strokeJoinRound
     }
 
-    dashedPaths = Pz.dashStroke stroke10 dashes
+    dashedPaths = Pz.dashStroke
+        (Pz.DashPattern True (50 + 50 * sin theta : cycle [50, 50, 50, 50]))
+        stroke10
+        Pz.StrokeClose
+        (Pz.Path [
+                Pz.arc (V2 300 300) 50 (pi * (-0.5)) (pi * (0.5)),
+                Pz.arc (V2 100 300) 50 (pi * (0.5)) (pi * (1.5))
+            ]
+        )
 
 
 
