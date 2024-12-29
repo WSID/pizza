@@ -50,6 +50,11 @@ testTreeRendering = "Rendering" ~: TestList [
                 "Round" ~: testPath pathJoinRound maskJoinRound,
                 "Bevel" ~: testPath pathJoinBevel maskJoinBevel
             ],
+            "Strokes Cap" ~: TestList [
+                "None" ~: testPath pathCapNone maskCapNone,
+                "Square" ~: testPath pathCapSquare maskCapSquare,
+                "Round" ~: testPath pathCapRound maskCapRound
+            ],
             "Dash" ~: TestList [
                 "Line 1" ~: testPath pathDashLine1 maskDashLine1,
                 "Line 2" ~: testPath pathDashLine2 maskDashLine2,
@@ -123,7 +128,7 @@ pathCornerBezier = [
     ]
 
 pathOutlineCircle :: [Graphics.Pizza.Path]
-pathOutlineCircle = stroke (StrokeOption 20 strokeJoinMiter) True $ Graphics.Pizza.Path [ arc (V2 100 100) 90 0 (2 * pi) ]
+pathOutlineCircle = stroke (StrokeOption 20 strokeJoinMiter) StrokeClose $ Graphics.Pizza.Path [ arc (V2 100 100) 90 0 (2 * pi) ]
 
 joinTestPath :: Graphics.Pizza.Path
 joinTestPath = Graphics.Pizza.Path [
@@ -133,13 +138,29 @@ joinTestPath = Graphics.Pizza.Path [
     ]
 
 pathJoinMiter :: [Graphics.Pizza.Path]
-pathJoinMiter = stroke (StrokeOption 100 strokeJoinMiter) False joinTestPath
+pathJoinMiter = stroke (StrokeOption 100 strokeJoinMiter) strokeEndNone joinTestPath
 
 pathJoinRound :: [Graphics.Pizza.Path]
-pathJoinRound = stroke (StrokeOption 100 strokeJoinRound) False joinTestPath
+pathJoinRound = stroke (StrokeOption 100 strokeJoinRound) strokeEndNone joinTestPath
 
 pathJoinBevel :: [Graphics.Pizza.Path]
-pathJoinBevel = stroke (StrokeOption 100 strokeJoinBevel) False joinTestPath
+pathJoinBevel = stroke (StrokeOption 100 strokeJoinBevel) strokeEndNone joinTestPath
+
+
+capTestPath :: Graphics.Pizza.Path
+capTestPath = Graphics.Pizza.Path [
+        PathPoint (V2 50 100),
+        PathPoint (V2 150 100)
+    ]
+
+pathCapNone :: [Graphics.Pizza.Path]
+pathCapNone = stroke (StrokeOption 100 strokeJoinMiter) strokeEndNone capTestPath
+
+pathCapSquare :: [Graphics.Pizza.Path]
+pathCapSquare = stroke (StrokeOption 100 strokeJoinMiter) (strokeEndBoth strokeCapSquare) capTestPath
+
+pathCapRound :: [Graphics.Pizza.Path]
+pathCapRound = stroke (StrokeOption 100 strokeJoinMiter) (strokeEndBoth strokeCapRound) capTestPath
 
 pathDashLine1 :: [Graphics.Pizza.Path]
 pathDashLine1 = dashStroke
@@ -264,6 +285,17 @@ maskJoinBevel = contains <$> coordinates
   where
     contains (V2 x y) =
         (((100 <= x) && (x <= 200)) || ((0 <= y) && (y <= 100))) && (x - y <= 150)
+
+maskCapNone :: [Bool]
+maskCapNone = inBox (V2 50 50) (V2 150 150) <$> coordinates
+
+maskCapSquare :: [Bool]
+maskCapSquare = inBox (V2 0 50) (V2 200 150) <$> coordinates
+
+maskCapRound :: [Bool]
+maskCapRound = contains <$> coordinates
+  where
+    contains p = (distance p (V2 50 100) <= 50) || inBox (V2 50 50) (V2 150 150) p || (distance p (V2 150 100) <= 50)
 
 maskDashLine1 :: [Bool]
 maskDashLine1 = contains <$> coordinates

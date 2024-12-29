@@ -215,7 +215,7 @@ createSwapchain Pz.Environment {..} SurfaceState {..} width height = do
 
 makeGraphic :: Float -> Pz.Graphics
 makeGraphic time = Pz.Graphics
-    (paths <> dashedPaths)
+    (paths <> strokes <> dashedPaths)
     (Pz.PatternRadial
         (V2 (200 + 400 * cos theta) (400 + 400 * sin theta))
         400
@@ -259,12 +259,19 @@ makeGraphic time = Pz.Graphics
                 ]
         ]
 
+    strokes = Pz.stroke strokeR
+        (Pz.strokeEndBoth Pz.strokeCapRound)
+        (Pz.Path [
+                Pz.arc (V2 300 100) 50 (pi * (-0.5)) (pi * (0.5)),
+                Pz.arc (V2 100 100) 50 (pi * (0.5)) (pi * (1.5))
+            ])
+
     dashes = Pz.dash
         True
         (Pz.DashPattern True (50 + 50 * sin theta : cycle [50, 50, 50, 50]))
         (Pz.Path [
-                Pz.arc (V2 300 200) 50 (pi * (-0.5)) (pi * (0.5)),
-                Pz.arc (V2 100 200) 50 (pi * (0.5)) (pi * (1.5))
+                Pz.arc (V2 300 300) 50 (pi * (-0.5)) (pi * (0.5)),
+                Pz.arc (V2 100 300) 50 (pi * (0.5)) (pi * (1.5))
             ]
         )
 
@@ -273,6 +280,10 @@ makeGraphic time = Pz.Graphics
         Pz.strokeJoin = Pz.strokeJoinMiter
     }
 
+    strokeR = Pz.StrokeOption {
+        Pz.strokeThickness = 10,
+        Pz.strokeJoin = Pz.strokeJoinRound
+    }
 
     dashedPaths = Pz.dashStroke stroke10 dashes
 

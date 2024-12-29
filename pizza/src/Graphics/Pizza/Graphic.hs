@@ -26,5 +26,5 @@ data Pattern =
 
 
 dashStroke :: StrokeOption -> Dash -> [Path]
-dashStroke option (Dash ps) = stroke option False =<< ps
-dashStroke option (DashClose p) = stroke option True p
+dashStroke option (Dash ps) = stroke option strokeEndNone =<< ps
+dashStroke option (DashClose p) = stroke option StrokeClose p
