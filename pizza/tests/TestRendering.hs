@@ -1,6 +1,7 @@
 module TestRendering where
 
 -- base
+import Data.List
 import Data.Bool
 import Data.Word
 
@@ -10,7 +11,7 @@ import Control.Monad
 import Test.HUnit
 
 -- linear
-import Linear
+import Linear hiding (transpose)
 
 -- pizza
 import Graphics.Pizza
@@ -404,9 +405,7 @@ checkImages a b = do
     putStrLn $ "  Difference per pixel: " ++ show (rs `div` rn)
 
     unless good $ do
-        print a
-        putStrLn "\n"
-        print b
+        printDiff (zipWith (==) ai bi)
 
     pure good
 
@@ -423,3 +422,17 @@ testPath paths mask = do
     actual <- makeRenderedImage graphics
     let expected = bool (V4 0 0 0 255) (V4 255 255 255 255) <$> mask
     assert $ checkImages actual expected
+
+batched :: Int -> [a] -> [[a]]
+batched n [] = []
+batched n a = let (h, t) = splitAt n a in h : batched n t
+
+printDiff :: [Bool] -> IO ()
+printDiff good = do
+    let rows = batched 20 $ and <$> batched 10 good
+        cols = transpose rows
+        res = transpose $ fmap (fmap and . batched 10) cols
+    putStrLn $ unlines $ fmap ((++ "|") . fmap (\g -> if g then ' ' else 'X')) res
+
+
+
