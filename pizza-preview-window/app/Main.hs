@@ -249,14 +249,7 @@ makeGraphic time = Pz.Graphics
                         0
                         pi
                 ],
-            Pz.Path
-                [
-                    Pz.arc
-                        (V2 200 200)
-                        (100 + animValue2)
-                        0
-                        (2 * pi)
-                ]
+            Pz.circle (V2 200 200) (100 + animValue2)
         ]
 
     strokes = Pz.stroke strokeR
