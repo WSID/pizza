@@ -74,7 +74,7 @@ main = do
                         (t1, t2) ~?= (0.1, 0.4),
 
                     "Arc" ~: do
-                        let PathCurve curve = arc (V2 0 0) 100 0 2
+                        let curve = arc (V2 0 0) 100 0 2
                         let r0 = mkCurveRunner curve 256
                         let CurveRunning t1 r1 = runCurveRunner r0 20
                         let CurveRunning t2 r2 = runCurveRunner r1 40

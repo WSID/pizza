@@ -41,6 +41,19 @@ fromVPoly poly = Curve {
   where
     dp = derivVPoly poly
 
+-- Curves
+
+bezier :: V2 Float -> [V2 Float] -> V2 Float -> Curve
+bezier start controls end = fromVPoly $ bezierPoly start controls end
+
+arc :: V2 Float -> Float -> Float -> Float -> Curve
+arc center radius start end = Curve {
+    curvePosition = \t -> center + angle (start + (end - start) * t) ^* radius,
+    curveDirection = \t -> perp $ angle (start + (end - start) * t)
+}
+
+-- Curve Runner
+
 data CurveRunnerEntry = CurveRunnerEntry {
     curveRunnerEntryDistance :: Float,
     curveRunnerEntryStart :: Float,
@@ -77,3 +90,14 @@ runCurveRunner (CurveRunner (e: es) leftover) l
     entryDist = curveRunnerEntryDistance e
     nextLeftover = l + leftover
 
+
+-- Utility for curves
+
+bezierPoly :: V2 Float -> [V2 Float] -> V2 Float -> VPoly
+bezierPoly start [] end = VPoly [start, end - start]
+bezierPoly start controls end = result
+    where
+        a = bezierPoly start (init controls) (last controls)
+        b = bezierPoly (head controls) (tail controls) end
+        VPoly bf = subVPoly b a
+        result = addVPoly a (VPoly (zero : bf))

@@ -30,17 +30,19 @@ strokeJoinRound :: Float -> StrokeJoinPoint -> LeftRight
 strokeJoinRound thickness (StrokeJoinPoint pos adir bdir)
   | turnRight = LeftRight
             (Path [
-                arc pos (thickness * 0.5)
-                    (aang + pi * 0.5)
-                    (bangActual + pi * 0.5)
+                PathCurve $
+                    arc pos (thickness * 0.5)
+                        (aang + pi * 0.5)
+                        (bangActual + pi * 0.5)
             ])
             rp
   | otherwise = LeftRight
             lp
             (Path [
-                arc pos (thickness * 0.5)
-                    (bangActual - pi * 0.5)
-                    (aang - pi * 0.5)
+                PathCurve $
+                    arc pos (thickness * 0.5)
+                        (bangActual - pi * 0.5)
+                        (aang - pi * 0.5)
             ])
   where
     LeftRight lp  rp = leftRightDir2 thickness pos adir bdir
@@ -83,7 +85,7 @@ strokeCapNone _ _ _ = Path []
 
 -- Round cap
 strokeCapRound :: Float -> V2 Float -> V2 Float -> Path
-strokeCapRound thickness pos dir = Path [ arc pos (thickness * 0.5) (ang - (0.5 * pi)) (ang + (0.5 * pi))]
+strokeCapRound thickness pos dir = Path [ PathCurve $ arc pos (thickness * 0.5) (ang - (0.5 * pi)) (ang + (0.5 * pi))]
   where
     ang = unangle dir
 

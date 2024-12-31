@@ -115,21 +115,24 @@ pathDoubleDiamond = [
     ]
 
 pathHalfCircle :: [Graphics.Pizza.Path]
-pathHalfCircle = [Graphics.Pizza.Path [ arc (V2 100 100) 100 0 pi ]]
+pathHalfCircle = [Graphics.Pizza.Path [ PathCurve $ arc (V2 100 100) 100 0 pi ]]
 
 pathCircle :: [Graphics.Pizza.Path]
-pathCircle = [Graphics.Pizza.Path [ arc (V2 100 100) 100 0 (2 * pi) ]]
+pathCircle = [Graphics.Pizza.Path [ PathCurve $ arc (V2 100 100) 100 0 (2 * pi) ]]
 
 pathCornerBezier :: [Graphics.Pizza.Path]
 pathCornerBezier = [
         Graphics.Pizza.Path [
             PathPoint (V2 0 0),
-            bezier (V2 200 0) [V2 200 200] (V2 0 200)
+            PathCurve $ bezier (V2 200 0) [V2 200 200] (V2 0 200)
         ]
     ]
 
 pathOutlineCircle :: [Graphics.Pizza.Path]
-pathOutlineCircle = stroke (StrokeOption 20 strokeJoinMiter) StrokeClose $ Graphics.Pizza.Path [ arc (V2 100 100) 90 0 (2 * pi) ]
+pathOutlineCircle = stroke (StrokeOption 20 strokeJoinMiter) StrokeClose
+    (Graphics.Pizza.Path [
+        PathCurve $ arc (V2 100 100) 90 0 (2 * pi)
+    ])
 
 joinTestPath :: Graphics.Pizza.Path
 joinTestPath = Graphics.Pizza.Path [
@@ -182,7 +185,7 @@ pathDashCurve1 = dashStroke
     (DashPattern True [50, 50, 50])
     (StrokeOption 100 strokeJoinMiter)
     strokeEndNone
-    (Graphics.Pizza.Path [arc (V2 0 0) 150 0 (0.5 * pi)])
+    (Graphics.Pizza.Path [PathCurve $ arc (V2 0 0) 150 0 (0.5 * pi)])
 
 pathDashCurve2 :: [Graphics.Pizza.Path]
 pathDashCurve2 = dashStroke
@@ -191,8 +194,8 @@ pathDashCurve2 = dashStroke
     strokeEndNone
     (Graphics.Pizza.Path
         [
-            arc (V2 100 100) 100 (1 - pi) (- pi),
-            arc (V2 100 100) 100 (0) (1)
+            PathCurve $ arc (V2 100 100) 100 (1 - pi) (- pi),
+            PathCurve $ arc (V2 100 100) 100 (0) (1)
         ]
     )
 

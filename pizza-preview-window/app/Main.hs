@@ -231,19 +231,19 @@ makeGraphic time = Pz.Graphics
         [
             Pz.Path
                 [
-                    Pz.bezier
+                    Pz.PathCurve $ Pz.bezier
                         (V2 0 200)
                         [
                             V2 0 (0 - animValue1),
                             V2 400 (400 + animValue1)
                         ]
                         (V2 400 200),
-                    Pz.arc
+                    Pz.PathCurve $ Pz.arc
                         (V2 (300 + animValue2) 200)
                         (100 - animValue2)
                         0
                         (negate pi),
-                    Pz.arc
+                    Pz.PathCurve $ Pz.arc
                         (V2 (100 + animValue2) 200)
                         (100 + animValue2)
                         0
@@ -255,8 +255,8 @@ makeGraphic time = Pz.Graphics
     strokes = Pz.stroke strokeR
         (Pz.strokeEndBoth Pz.strokeCapRound)
         (Pz.Path [
-                Pz.arc (V2 300 100) 50 (pi * (-0.5)) (pi * (0.5)),
-                Pz.arc (V2 100 100) 50 (pi * (0.5)) (pi * (1.5))
+                Pz.PathCurve $ Pz.arc (V2 300 100) 50 (pi * (-0.5)) (pi * (0.5)),
+                Pz.PathCurve $ Pz.arc (V2 100 100) 50 (pi * (0.5)) (pi * (1.5))
             ])
 
     stroke10 = Pz.StrokeOption {
@@ -274,8 +274,8 @@ makeGraphic time = Pz.Graphics
         stroke10
         Pz.StrokeClose
         (Pz.Path [
-                Pz.arc (V2 300 300) 50 (pi * (-0.5)) (pi * (0.5)),
-                Pz.arc (V2 100 300) 50 (pi * (0.5)) (pi * (1.5))
+                Pz.PathCurve $ Pz.arc (V2 300 300) 50 (pi * (-0.5)) (pi * (0.5)),
+                Pz.PathCurve $ Pz.arc (V2 100 300) 50 (pi * (0.5)) (pi * (1.5))
             ]
         )
 
