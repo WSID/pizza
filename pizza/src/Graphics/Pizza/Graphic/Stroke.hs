@@ -7,13 +7,13 @@ import Graphics.Pizza.Graphic.Path
 import Graphics.Pizza.Internal.Geometry
 
 
-data LeftRight = LeftRight [PathPart] [PathPart]
+data LeftRight = LeftRight Path Path
 
 instance Semigroup LeftRight where
     LeftRight al ar <> LeftRight bl br = LeftRight (al <> bl) (br <> ar)
 
 instance Monoid LeftRight where
-    mempty = LeftRight [] []
+    mempty = LeftRight mempty mempty
 
 data StrokeJoinPoint = StrokeJoinPoint {
     strokeJoinPosition :: V2 Float,
@@ -29,19 +29,19 @@ strokeJoinMiter thickness (StrokeJoinPoint pos adir bdir) = leftRightDir2 thickn
 strokeJoinRound :: Float -> StrokeJoinPoint -> LeftRight
 strokeJoinRound thickness (StrokeJoinPoint pos adir bdir)
   | turnRight = LeftRight
-            [
+            (Path [
                 arc pos (thickness * 0.5)
                     (aang + pi * 0.5)
                     (bangActual + pi * 0.5)
-            ]
+            ])
             rp
   | otherwise = LeftRight
             lp
-            [
+            (Path [
                 arc pos (thickness * 0.5)
                     (bangActual - pi * 0.5)
                     (aang - pi * 0.5)
-            ]
+            ])
   where
     LeftRight lp  rp = leftRightDir2 thickness pos adir bdir
     aang = unangle adir
@@ -117,12 +117,12 @@ stroke option (StrokeEnd startCap endCap) (Path [PathPoint pos]) = case result o
     Path endCapPart = endCap thickness pos (V2 1 0)
     result = startCapPart <> endCapPart
 
-stroke option StrokeClose (Path [PathCurve curve]) = [Path lc, Path rc]
+stroke option StrokeClose (Path [PathCurve curve]) = [lc, rc]
   where
     LeftRight lc rc = leftRightCurve (strokeThickness option) curve
 
 stroke option (StrokeEnd startCap endCap) (Path [PathCurve curve]) =
-    [ Path (startCapParts <> lc <> endCapParts <> rc) ]
+    [ startCapParts <> lc <> endCapParts <> rc ]
   where
     thickness = strokeThickness option
     LeftRight lc rc = leftRightCurve thickness curve
@@ -130,17 +130,17 @@ stroke option (StrokeEnd startCap endCap) (Path [PathCurve curve]) =
     adir = signorm $ curveDirection curve 0
     bpos = curvePosition curve 1
     bdir = signorm $ curveDirection curve 1
-    Path startCapParts = startCap thickness apos (negate adir)
-    Path endCapParts = endCap thickness bpos bdir
+    startCapParts = startCap thickness apos (negate adir)
+    endCapParts = endCap thickness bpos bdir
 
-stroke option StrokeClose (Path (p: ps)) = [Path lres, Path rres]
+stroke option StrokeClose (Path (p: ps)) = [lres, rres]
   where
     psR = ps <> [p]
     dirs = zipWith (\a b -> signorm $ pathPartStart b - pathPartEnd a) (p: ps) psR
     dirsR = last dirs : init dirs
     LeftRight lres rres = fold $ zipWith3 (strokeIter option) (p: ps) dirsR dirs
 
-stroke option (StrokeEnd sc ec) (Path (p : ps)) = [Path (lres <> ecp <> rres <> scp)]
+stroke option (StrokeEnd sc ec) (Path (p : ps)) = [lres <> ecp <> rres <> scp]
   where
     thickness = strokeThickness option
     pl = last ps
@@ -161,8 +161,8 @@ stroke option (StrokeEnd sc ec) (Path (p : ps)) = [Path (lres <> ecp <> rres <> 
         PathPoint _ -> dirl
         PathCurve c -> signorm $ curveDirection c 1
 
-    Path scp = sc thickness apos (negate adir)
-    Path ecp = ec thickness bpos bdir
+    scp = sc thickness apos (negate adir)
+    ecp = ec thickness bpos bdir
 
 
 strokeStart :: StrokeOption -> PathPart -> V2 Float -> LeftRight
@@ -208,13 +208,17 @@ strokeEnd option (PathCurve curve) dir =
     adir = curveDirection curve 0
 
 leftRightDir :: Float -> V2 Float -> V2 Float -> LeftRight
-leftRightDir thickness p d = LeftRight [PathPoint (p + h)] [PathPoint (p - h)]
+leftRightDir thickness p d = LeftRight
+    (Path [PathPoint (p + h)])
+    (Path [PathPoint (p - h)])
   where
     h = perp d ^* (thickness * 0.5)
 
 leftRightDir2 :: Float -> V2 Float -> V2 Float -> V2 Float -> LeftRight
 leftRightDir2 thickness p d1 d2 = case l of
-    Just left -> LeftRight [PathPoint left] [PathPoint (p + p - left)]
+    Just left -> LeftRight
+        (Path [PathPoint left])
+        (Path [PathPoint (p + p - left)])
     Nothing -> leftRightDir thickness p d1
   where
     e1 = perp d1 ^* (thickness * 0.5)
@@ -225,7 +229,7 @@ leftRightDir2 thickness p d1 d2 = case l of
 
 leftRightCurve :: Float -> Curve -> LeftRight
 leftRightCurve thickness curve = LeftRight
-    [PathCurve $ half `alongsideOf` curve]
-    [PathCurve $ half `alongsideOf` Curve.reverse curve]
+    (Path [PathCurve $ half `alongsideOf` curve])
+    (Path [PathCurve $ half `alongsideOf` Curve.reverse curve])
   where
     half = thickness * 0.5

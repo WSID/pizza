@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Graphics.Pizza.Graphic.Path where
 
@@ -11,7 +12,7 @@ data PathPart
     = PathPoint (V2 Float)
     | PathCurve Curve
 
-newtype Path = Path [PathPart]
+newtype Path = Path [PathPart] deriving (Semigroup, Monoid)
 
 data PathSplitOptions = PathSplitOptions {
     pathSplitDistance :: Float,
