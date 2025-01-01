@@ -11,14 +11,22 @@ data PathPart
     = PathPoint (V2 Float)
     | PathCurve Curve
 
+pathPartStart :: PathPart -> V2 Float
+pathPartStart (PathPoint p) = p
+pathPartStart (PathCurve (Curve pos _)) = pos 0
+
+pathPartEnd :: PathPart -> V2 Float
+pathPartEnd (PathPoint p) = p
+pathPartEnd (PathCurve (Curve pos _)) = pos 1
+
 newtype Path = Path [PathPart] deriving (Semigroup, Monoid)
+
+-- Splits
 
 data PathSplitOptions = PathSplitOptions {
     pathSplitDistance :: Float,
     pathSplitHeight :: Float
 }
-
--- Functions
 
 continueSplitPoint :: PathSplitOptions -> V2 Float -> V2 Float -> V2 Float -> Bool
 continueSplitPoint PathSplitOptions {..} a b c = metDist || metHeight
@@ -60,4 +68,5 @@ polygon vs = Path $ fmap PathPoint vs
 
 circle :: V2 Float -> Float -> Path
 circle center radius = Path [ PathCurve $ arc center radius 0 (2 * pi) ]
+
 

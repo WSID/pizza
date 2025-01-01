@@ -71,24 +71,30 @@ data CurveRunner = CurveRunner {
 mkCurveRunner :: Curve -> Int -> CurveRunner
 mkCurveRunner curve n
   | n <= 0 = CurveRunner [] 0
-  | otherwise = CurveRunner (zipWith3 CurveRunnerEntry dists ts (tail ts)) 0
+  | otherwise = CurveRunner (zipWith3 CurveRunnerEntry dists inputs (tail inputs)) 0
   where
-    ts = fmap (\i -> fromIntegral i / fromIntegral n) [0 .. n]
-    poss = fmap (curvePosition curve) ts
+    inputs = fmap (\i -> fromIntegral i / fromIntegral n) [0 .. n]
+    poss = fmap (curvePosition curve) inputs
     dists = zipWith distance poss (tail poss)
 
 data CurveRunResult = CurveRunning Float CurveRunner | CurveDone Float
 
 runCurveRunner :: CurveRunner -> Float -> CurveRunResult
 
-runCurveRunner (CurveRunner [] _) l = CurveDone l
+runCurveRunner (CurveRunner [] _) len = CurveDone len
 
-runCurveRunner (CurveRunner (e: es) leftover) l
-  | nextLeftover > entryDist = runCurveRunner (CurveRunner es 0) (nextLeftover - entryDist)
-  | otherwise = CurveRunning (curveRunnerEntryAt e nextLeftover) (CurveRunner (e: es) nextLeftover)
+runCurveRunner (CurveRunner (entry: es) entryLeft) len
+  | nextEntryLeft > entryDist =
+        runCurveRunner
+            (CurveRunner es 0)
+            (nextEntryLeft - entryDist)
+  | otherwise =
+        CurveRunning
+            (curveRunnerEntryAt entry nextEntryLeft)
+            (CurveRunner (entry: es) nextEntryLeft)
   where
-    entryDist = curveRunnerEntryDistance e
-    nextLeftover = l + leftover
+    entryDist = curveRunnerEntryDistance entry
+    nextEntryLeft = len + entryLeft
 
 
 -- Utility for curves

@@ -1,5 +1,7 @@
 module Graphics.Pizza.Graphic.Dash where
 
+import Data.Maybe
+
 import Linear
 
 import Graphics.Pizza.Graphic.Curve
@@ -26,12 +28,10 @@ dashPatternCons (DashPattern on []) = (on, Nothing)
 dashPatternCons (DashPattern on (p: ps)) = (on, Just (p, DashPattern (not on) ps))
 
 data DashState = DashState {
-    dashStateOn :: Maybe [PathPart],
+    dashStateOn :: Maybe Path,
     dashStatePattern :: [Float],
-    dashStateAccum :: [[PathPart]]
+    dashStateAccum :: [Path]
 }
-
-data Dash = Dash [Path] | DashClose Path
 
 dashBetween :: V2 Float -> V2 Float -> DashState -> DashState
 dashBetween start end = go 0
@@ -41,55 +41,98 @@ dashBetween start end = go 0
     segDir = segDisp ^/ segDist
 
     go :: Float -> DashState -> DashState
-    go l s = case dashStatePattern s of
-        [] -> s
-        (pat: ps) -> case dashStateOn s of
-            Nothing
-              | nl < segDist -> go nl $ DashState (Just [np]) ps (dashStateAccum s)
-              | otherwise    -> DashState Nothing (nl - segDist: ps) (dashStateAccum s)
-            Just wip
-              | nl < segDist -> go nl $ DashState Nothing ps (dashStateAccum s <> [wip <> [np]])
-              | otherwise    -> DashState (Just wip) (nl - segDist: ps) (dashStateAccum s)
+    go len state = case dashStatePattern state of
+        [] -> state
+        (pat: ps)
+          | nextLen >= segDist -> state {
+                    dashStatePattern = nextLen - segDist : ps
+                }
+
+          | otherwise -> go nextLen $ case dashStateOn state of
+                Nothing -> state {
+                        dashStateOn = Just newPath,
+                        dashStatePattern = ps
+                    }
+                Just wip -> state {
+                        dashStateOn = Nothing,
+                        dashStatePattern = ps,
+                        dashStateAccum = dashStateAccum state <> [wip <> newPath]
+                    }
+
           where
-            nl = l + pat
-            np = PathPoint (start + nl *^ segDir)
+            nextLen = len + pat
+            newPath = Path [PathPoint (start + nextLen *^ segDir)]
 
-dashPoint :: V2 Float -> DashState -> DashState
-dashPoint pos s = s { dashStateOn = (<> [PathPoint pos]) <$> dashStateOn s }
-
-dashCurve :: Curve -> DashState -> DashState
-dashCurve curve state = go 0 (mkCurveRunner curve 32) state
-  where
-    go :: Float -> CurveRunner -> DashState -> DashState
-    go ts r s = case dashStatePattern s of
-      [] -> case dashStateOn s of
-        Nothing -> s
-        Just wip -> DashState (Just (wip <> [PathCurve (subCurve ts 1 curve)])) [] (dashStateAccum s)
-
-      (pat: ps) -> case runCurveRunner r pat of
-          CurveRunning t nr -> case dashStateOn s of
-              Nothing -> go t nr (DashState (Just []) ps (dashStateAccum s))
-              Just wip -> go t nr (DashState Nothing ps (dashStateAccum s <> [wip <> [PathCurve (subCurve ts t curve)]]))
-          CurveDone rl -> case dashStateOn s of
-              Nothing -> s {dashStatePattern = rl: ps}
-              Just wip -> DashState (Just (wip <> [PathCurve (subCurve ts 1 curve)])) (rl: ps) (dashStateAccum s)
 
 dashPathPart :: PathPart -> DashState -> DashState
-dashPathPart (PathPoint p) = dashPoint p
-dashPathPart (PathCurve c) = dashCurve c
+dashPathPart (PathPoint pos) state = state {
+        dashStateOn = (<> Path [PathPoint pos]) <$> dashStateOn state
+    }
+
+dashPathPart (PathCurve curve) state = go 0 (mkCurveRunner curve 32) state
+  where
+    go :: Float -> CurveRunner -> DashState -> DashState
+    go curveStart runner s = case dashStatePattern s of
+      [] -> s {
+            dashStateOn = (<> newPath 1) <$> dashStateOn s
+        }
+
+      (pat: ps) -> case runCurveRunner runner pat of
+          CurveRunning curveEnd nextRunner -> go curveEnd nextRunner $ case dashStateOn s of
+              Nothing -> s {
+                    dashStateOn = Just mempty,
+                    dashStatePattern = ps
+                }
+              Just wip -> s {
+                    dashStateOn = Nothing,
+                    dashStatePattern = ps,
+                    dashStateAccum = dashStateAccum s <> [wip <> newPath curveEnd]
+                }
+
+          CurveDone remLen -> s {
+                    dashStateOn = (<> newPath 1) <$> dashStateOn s,
+                    dashStatePattern = remLen: ps
+                }
+      where
+        newPath t = Path [ PathCurve (subCurve curveStart t curve) ]
+
+
+
+data Dash = Dash [Path] | DashClose Path
 
 dash :: Bool -> DashPattern -> Path -> Dash
 dash _ _ (Path []) = Dash []
-dash close (DashPattern on pat) (Path ps) = case (close, lon) of
-    (True, Just wip) -> case accum of
-      [] -> DashClose $ Path wip
-      (p: q) -> Dash $ Path <$> (wip <> p : q)
-    _ -> Dash $ Path <$> maybe accum (\o -> accum <> [o]) lon
+dash close (DashPattern on pat) path = case (close, finalOn) of
+
+    -- When we dashing closed path, and we piled up some dash to the end.
+    -- In case we dashed something at initial - we connect them.
+
+    (True, Just wip) -> case finalAccum of
+      [] -> DashClose wip
+      (p: q) -> Dash (wip <> p : q)
+
+    -- Other case, we just put on-going dash as last dash.
+
+    _ -> Dash (finalAccum <> maybeToList finalOn)
   where
+    initState = DashState {
+            dashStateOn = if on then Just mempty else Nothing,
+            dashStatePattern = pat,
+            dashStateAccum = []
+        }
+    Path ps = path
     pathStart = pathPartStart $ head ps
-    go [] s = s
-    go [p] s = if close
+
+    go (Path []) s = s
+
+    go (Path [p]) s = if close
         then dashBetween (pathPartEnd p) pathStart $ dashPathPart p s
         else dashPathPart p s
-    go (p: q: r) s = go (q: r) $ dashBetween (pathPartEnd p) (pathPartStart q) $ dashPathPart p s
-    DashState lon _ accum = go ps (DashState (if on then Just [] else Nothing) pat [])
+
+    go (Path (p: q: r)) s =
+        go (Path (q: r)) $
+        dashBetween (pathPartEnd p) (pathPartStart q) $
+        dashPathPart p s
+
+    DashState finalOn _ finalAccum = go path initState
+

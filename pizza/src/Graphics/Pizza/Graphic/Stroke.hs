@@ -6,6 +6,7 @@ import Graphics.Pizza.Graphic.Curve as Curve
 import Graphics.Pizza.Graphic.Path
 import Graphics.Pizza.Internal.Geometry
 
+-- Left Right
 
 data LeftRight = LeftRight Path Path
 
@@ -14,6 +15,35 @@ instance Semigroup LeftRight where
 
 instance Monoid LeftRight where
     mempty = LeftRight mempty mempty
+
+leftRightDir :: Float -> V2 Float -> V2 Float -> LeftRight
+leftRightDir thickness pos dir = LeftRight
+    (Path [PathPoint (pos + h)])
+    (Path [PathPoint (pos - h)])
+  where
+    h = perp dir ^* (thickness * 0.5)
+
+leftRightDir2 :: Float -> V2 Float -> V2 Float -> V2 Float -> LeftRight
+leftRightDir2 thickness pos dir1 dir2 = case mayIntersect of
+    Just intersect -> LeftRight
+        (Path [PathPoint intersect])
+        (Path [PathPoint (pos + pos - intersect)])
+    Nothing -> leftRightDir thickness pos dir1
+  where
+    leftDir1 = perp dir1 ^* (thickness * 0.5)
+    leftDir2 = perp dir2 ^* (thickness * 0.5)
+    leftPos1 = pos + leftDir1
+    leftPos2 = pos + leftDir2
+    mayIntersect = lineIntersect leftPos1 dir1 leftPos2 dir2
+
+leftRightCurve :: Float -> Curve -> LeftRight
+leftRightCurve thickness curve = LeftRight
+    (Path [PathCurve $ half `alongsideOf` curve])
+    (Path [PathCurve $ half `alongsideOf` Curve.reverse curve])
+  where
+    half = thickness * 0.5
+
+-- Stroke Join
 
 data StrokeJoinPoint = StrokeJoinPoint {
     strokeJoinPosition :: V2 Float,
@@ -24,33 +54,31 @@ data StrokeJoinPoint = StrokeJoinPoint {
 type StrokeJoin = Float -> StrokeJoinPoint -> LeftRight
 
 strokeJoinMiter :: Float -> StrokeJoinPoint -> LeftRight
-strokeJoinMiter thickness (StrokeJoinPoint pos adir bdir) = leftRightDir2 thickness pos adir bdir
+strokeJoinMiter thickness (StrokeJoinPoint pos adir bdir) =
+    leftRightDir2 thickness pos adir bdir
 
 strokeJoinRound :: Float -> StrokeJoinPoint -> LeftRight
 strokeJoinRound thickness (StrokeJoinPoint pos adir bdir)
   | turnRight = LeftRight
             (Path [
                 PathCurve $
-                    arc pos (thickness * 0.5)
-                        (aang + pi * 0.5)
-                        (bangActual + pi * 0.5)
+                    arc pos (thickness * 0.5) (aang + pi05) (bangActual + pi05)
             ])
             rp
   | otherwise = LeftRight
             lp
             (Path [
                 PathCurve $
-                    arc pos (thickness * 0.5)
-                        (bangActual - pi * 0.5)
-                        (aang - pi * 0.5)
+                    arc pos (thickness * 0.5) (bangActual - pi05) (aang - pi05)
             ])
   where
-    LeftRight lp  rp = leftRightDir2 thickness pos adir bdir
+    LeftRight lp rp = leftRightDir2 thickness pos adir bdir
     aang = unangle adir
     bang = unangle bdir
+    angleDiff = bang - aang
     bangActual
-        | bang - aang > pi = bang - (2 * pi)
-        | bang - aang < (-pi) = bang + (2 * pi)
+        | angleDiff > pi = bang - pi2
+        | angleDiff < (-pi) = bang + pi2
         | otherwise = bang
 
     turnRight = adir `crossZ` bdir < 0
@@ -65,6 +93,7 @@ strokeJoinBevel thickness (StrokeJoinPoint pos adir bdir)
     LeftRight lb rb = leftRightDir thickness pos bdir
     turnRight = adir `crossZ` bdir < 0
 
+-- Stroke Options
 
 data StrokeOption = StrokeOption {
     strokeThickness :: Float,
@@ -77,6 +106,8 @@ defStrokeOption = StrokeOption {
     strokeJoin = strokeJoinMiter
 }
 
+-- Stroke Cap
+
 type StrokeCap = Float -> V2 Float -> V2 Float -> Path
 
 -- Empty cap: Do nothing
@@ -85,7 +116,7 @@ strokeCapNone _ _ _ = Path []
 
 -- Round cap
 strokeCapRound :: Float -> V2 Float -> V2 Float -> Path
-strokeCapRound thickness pos dir = Path [ PathCurve $ arc pos (thickness * 0.5) (ang - (0.5 * pi)) (ang + (0.5 * pi))]
+strokeCapRound thickness pos dir = Path [ PathCurve $ arc pos (thickness * 0.5) (ang - pi05) (ang + pi05)]
   where
     ang = unangle dir
 
@@ -99,6 +130,8 @@ strokeCapSquare thickness pos dir = Path [
     forward = dir ^* (0.5 * thickness)
     right = perp forward
 
+-- Stroke End
+
 data StrokeEnd = StrokeClose | StrokeEnd StrokeCap StrokeCap
 
 strokeEndNone :: StrokeEnd
@@ -106,6 +139,8 @@ strokeEndNone = strokeEndBoth strokeCapNone
 
 strokeEndBoth :: StrokeCap -> StrokeEnd
 strokeEndBoth cap = StrokeEnd cap cap
+
+-- Stroke
 
 stroke :: StrokeOption -> StrokeEnd -> Path -> [Path]
 stroke _ _ (Path []) = []
@@ -209,29 +244,3 @@ strokeEnd option (PathCurve curve) dir =
     apos = curvePosition curve 0
     adir = curveDirection curve 0
 
-leftRightDir :: Float -> V2 Float -> V2 Float -> LeftRight
-leftRightDir thickness p d = LeftRight
-    (Path [PathPoint (p + h)])
-    (Path [PathPoint (p - h)])
-  where
-    h = perp d ^* (thickness * 0.5)
-
-leftRightDir2 :: Float -> V2 Float -> V2 Float -> V2 Float -> LeftRight
-leftRightDir2 thickness p d1 d2 = case l of
-    Just left -> LeftRight
-        (Path [PathPoint left])
-        (Path [PathPoint (p + p - left)])
-    Nothing -> leftRightDir thickness p d1
-  where
-    e1 = perp d1 ^* (thickness * 0.5)
-    e2 = perp d2 ^* (thickness * 0.5)
-    l1 = p + e1
-    l2 = p + e2
-    l = lineIntersect l1 d1 l2 d2
-
-leftRightCurve :: Float -> Curve -> LeftRight
-leftRightCurve thickness curve = LeftRight
-    (Path [PathCurve $ half `alongsideOf` curve])
-    (Path [PathCurve $ half `alongsideOf` Curve.reverse curve])
-  where
-    half = thickness * 0.5
