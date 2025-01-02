@@ -9,15 +9,9 @@ module ImageRender where
 import Data.Bits
 import Data.Word
 
-import Control.Monad.IO.Class
-import Control.Exception (bracket)
-
 import Foreign.Ptr
 import Foreign.Storable
 import Foreign.Marshal.Array
-
--- mtl / transformers
-import Control.Monad.Trans.Cont
 
 -- linear
 import Linear
@@ -37,18 +31,16 @@ import qualified VulkanMemoryAllocator as Vma
 import Graphics.Pizza
 
 makeRenderedImage :: Graphics -> IO [V4 Word8]
-makeRenderedImage graphics = evalContT do
-    -- Make use of ContT, with bracket.
-    -- This will make such items to be freed at out of 'scope'.
+makeRenderedImage graphics = do
 
     -- Environment
-    environment <- ContT $ bracket newBasicEnvironment freeEnvironment
+    environment <- newBasicEnvironment
     let Environment {..} = environment
 
     let format = Vk.FORMAT_R8G8B8A8_UNORM
 
     -- Staging Buffer
-    (staging, stagingAlloc, _) <- ContT $ Vma.withBuffer environmentAllocator
+    (staging, stagingAlloc, _) <- Vma.createBuffer environmentAllocator
         -- Vk.BufferCreateInfo []
         Vk.zero {
             Vk.size = fromIntegral (200 * 200 * sizeOf (undefined :: V4 Word8)),
@@ -61,46 +53,32 @@ makeRenderedImage graphics = evalContT do
             Vma.flags = Vma.ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
             Vma.usage = Vma.MEMORY_USAGE_AUTO
         }
-        bracket
 
     -- Pizzas
-    renderer <- ContT $ bracket
-        (newRenderer environment format Vk.IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
-        freeRenderer
-
-    renderTarget <- ContT $ bracket
-        (newRenderTarget renderer 200 200 format)
-        (freeRenderTarget renderer)
-
-    liftIO $ putStrLn "Pizza Preparation"
-
-    renderState <- ContT $ bracket
-        (newRenderState renderer)
-        (freeRenderState renderer)
-
-    liftIO $ putStrLn "Pizza Render State"
+    renderer <- newRenderer environment format Vk.IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+    renderTarget <- newRenderTarget renderer 200 200 format
+    renderState <- newRenderState renderer
 
 
     -- Command Pool
-    commandPool <- ContT $ Vk.withCommandPool environmentDevice
+    commandPool <- Vk.createCommandPool environmentDevice
         Vk.CommandPoolCreateInfo {
             Vk.flags = zeroBits,
             Vk.queueFamilyIndex = environmentGraphicsQFI
         }
-        Nothing bracket
+        Nothing
 
-    commandBuffers <- ContT $ Vk.withCommandBuffers environmentDevice
+    commandBuffers <- Vk.allocateCommandBuffers environmentDevice
         -- Vk.CommandBufferAllocateInfo
         Vk.zero {
             Vk.commandPool = commandPool,
             Vk.level = Vk.COMMAND_BUFFER_LEVEL_PRIMARY,
             Vk.commandBufferCount = 1
         }
-        bracket
 
     let commandBuffer = V.head commandBuffers
 
-    liftIO $ Vk.useCommandBuffer commandBuffer Vk.CommandBufferBeginInfo {
+    Vk.useCommandBuffer commandBuffer Vk.CommandBufferBeginInfo {
         Vk.next = (),
         Vk.flags = Vk.COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
         Vk.inheritanceInfo = Nothing
@@ -122,7 +100,7 @@ makeRenderedImage graphics = evalContT do
                 Vk.imageExtent = Vk.Extent3D 200 200 1
             })
 
-    transferFence <- ContT $ Vk.withFence environmentDevice Vk.zero Nothing bracket
+    transferFence <- Vk.createFence environmentDevice Vk.zero Nothing
 
     _ <- renderRenderStateTarget renderer renderState graphics renderTarget Nothing
 
@@ -136,9 +114,24 @@ makeRenderedImage graphics = evalContT do
 
     _ <- Vk.waitForFences environmentDevice (V.singleton transferFence) True maxBound
 
-    ptr <- ContT $ Vma.withMappedMemory environmentAllocator stagingAlloc bracket
+    ptr <- Vma.mapMemory environmentAllocator stagingAlloc
 
     let pixelPtr = castPtr ptr :: Ptr (V4 Word8)
+    result <- peekArray (200 * 200) pixelPtr
 
-    liftIO $ peekArray (200 * 200) pixelPtr
+    -- Unmap Mapped Memory and Free Resources
+    Vma.unmapMemory environmentAllocator stagingAlloc
 
+    Vk.destroyFence environmentDevice transferFence Nothing
+    Vk.freeCommandBuffers environmentDevice commandPool commandBuffers
+    Vk.destroyCommandPool environmentDevice commandPool Nothing
+
+    freeRenderState renderer renderState
+    freeRenderTarget renderer renderTarget
+    freeRenderer renderer
+
+    Vma.destroyBuffer environmentAllocator staging stagingAlloc
+
+    freeEnvironment environment
+
+    pure result

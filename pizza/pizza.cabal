@@ -107,7 +107,6 @@ test-suite tests
     build-depends:
         base ^>=4.17.2.1,
         HUnit,
-        mtl,
         transformers,
         bytestring,
         vector,
