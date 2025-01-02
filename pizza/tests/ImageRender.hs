@@ -10,7 +10,6 @@ import Data.Word
 
 import Control.Monad.IO.Class
 import Control.Exception (bracket)
-import Control.Monad
 
 import Foreign.Ptr
 import Foreign.Storable

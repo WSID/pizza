@@ -7,7 +7,6 @@ module Graphics.Pizza.RenderState where
 import Control.Monad
 import Control.Monad.IO.Class
 
-import Data.Functor
 import Data.Bits
 import Data.Word
 

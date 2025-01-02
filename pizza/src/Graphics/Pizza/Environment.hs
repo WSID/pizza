@@ -10,7 +10,6 @@ import Data.Bits
 import Data.Traversable
 import Data.Word
 
-import Foreign.Storable
 import Foreign.Ptr
 
 -- vector
@@ -24,9 +23,6 @@ import qualified Vulkan as Vk
 import qualified Vulkan.CStruct.Extends as Vk
 import qualified Vulkan.Dynamic as Vk
 import qualified Vulkan.Zero as Vk
-
--- vulkan utils
-import qualified Vulkan.Utils.ShaderQQ.GLSL.Shaderc as Vku
 
 -- VulkanMemoryAllocator
 import qualified VulkanMemoryAllocator as Vma

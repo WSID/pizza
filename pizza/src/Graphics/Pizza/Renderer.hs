@@ -8,11 +8,9 @@ module Graphics.Pizza.Renderer where
 import Control.Monad.IO.Class
 
 import Data.Bits
-import Data.Traversable
 import Data.Word
 
 import Foreign.Storable
-import Foreign.Ptr
 
 -- linear
 import Linear
@@ -26,14 +24,10 @@ import qualified Data.ByteString.Char8 as BSC
 -- vulkan
 import qualified Vulkan as Vk
 import qualified Vulkan.CStruct.Extends as Vk
-import qualified Vulkan.Dynamic as Vk
 import qualified Vulkan.Zero as Vk
 
 -- vulkan utils
 import qualified Vulkan.Utils.ShaderQQ.GLSL.Shaderc as Vku
-
--- VulkanMemoryAllocator
-import qualified VulkanMemoryAllocator as Vma
 
 -- pizza
 import Graphics.Pizza.Environment

@@ -1,16 +1,8 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE DisambiguateRecordFields #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE BlockArguments #-}
 
 module Main where
-
--- base
-import Data.Bool
-import Data.Word
-
-import Control.Monad
 
 -- HUnit
 import Test.HUnit
@@ -22,7 +14,6 @@ import Linear
 import Graphics.Pizza
 import Graphics.Pizza.Internal.Util
 import Graphics.Pizza.Internal.Geometry
-import Graphics.Pizza.Graphic.Curve
 
 -- test internal
 import TestRendering

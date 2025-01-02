@@ -1,7 +1,3 @@
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE DataKinds #-}
-
 module Graphics.Pizza (
     module Graphics.Pizza.Environment,
     module Graphics.Pizza.Graphic,
