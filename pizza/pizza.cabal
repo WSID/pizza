@@ -60,19 +60,19 @@ library
 
     -- Modules exported by the library.
     exposed-modules:
-    	Graphics.Pizza,
-    	Graphics.Pizza.Environment,
-    	Graphics.Pizza.Graphic,
-    	Graphics.Pizza.Graphic.Curve,
-    	Graphics.Pizza.Graphic.Dash,
-    	Graphics.Pizza.Graphic.Path,
-    	Graphics.Pizza.Graphic.Stroke,
-    	Graphics.Pizza.Renderer,
-    	Graphics.Pizza.RenderState,
-    	Graphics.Pizza.RenderTarget,
-    	Graphics.Pizza.Internal.Geometry,
-    	Graphics.Pizza.Internal.TypedBuffer,
-    	Graphics.Pizza.Internal.Util
+        Graphics.Pizza,
+        Graphics.Pizza.Environment,
+        Graphics.Pizza.Graphic,
+        Graphics.Pizza.Graphic.Curve,
+        Graphics.Pizza.Graphic.Dash,
+        Graphics.Pizza.Graphic.Path,
+        Graphics.Pizza.Graphic.Stroke,
+        Graphics.Pizza.Renderer,
+        Graphics.Pizza.RenderState,
+        Graphics.Pizza.RenderTarget,
+        Graphics.Pizza.Internal.Geometry,
+        Graphics.Pizza.Internal.TypedBuffer,
+        Graphics.Pizza.Internal.Util
 
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -82,13 +82,13 @@ library
 
     -- Other library packages from which modules are imported.
     build-depends:
-    	base ^>=4.17.2.1,
-    	bytestring,
-    	vector,
-    	vulkan,
-    	vulkan-utils,
-    	VulkanMemoryAllocator,
-    	linear
+        base ^>=4.17.2.1,
+        bytestring,
+        vector,
+        vulkan,
+        vulkan-utils,
+        VulkanMemoryAllocator,
+        linear
 
     -- Directories containing source files.
     hs-source-dirs:   src
@@ -105,17 +105,17 @@ test-suite tests
         TestRendering
 
     build-depends:
-    	base ^>=4.17.2.1,
-    	HUnit,
-    	mtl,
-    	transformers,
-    	bytestring,
-    	vector,
-    	vulkan,
-    	vulkan-utils,
-    	VulkanMemoryAllocator,
-    	linear,
-    	pizza
+        base ^>=4.17.2.1,
+        HUnit,
+        mtl,
+        transformers,
+        bytestring,
+        vector,
+        vulkan,
+        vulkan-utils,
+        VulkanMemoryAllocator,
+        linear,
+        pizza
 
     type: exitcode-stdio-1.0
 
