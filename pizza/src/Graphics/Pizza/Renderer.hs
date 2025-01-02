@@ -86,8 +86,11 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
 
     rendererStencilRenderPass <- Vk.createRenderPass
         environmentDevice
-        Vk.zero { -- Vk.RenderPassCreateInfo
-            Vk.attachments = V.singleton (Vk.zero :: Vk.AttachmentDescription) {
+        Vk.RenderPassCreateInfo { -- Vk.RenderPassCreateInfo
+            Vk.next = (),
+            Vk.flags = zeroBits,
+            Vk.attachments = V.singleton Vk.AttachmentDescription {
+                Vk.flags = zeroBits,
                 Vk.format = Vk.FORMAT_S8_UINT,
                 Vk.samples = Vk.SAMPLE_COUNT_1_BIT,
                 Vk.loadOp = Vk.ATTACHMENT_LOAD_OP_DONT_CARE,
@@ -97,25 +100,35 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
                 Vk.initialLayout = Vk.IMAGE_LAYOUT_UNDEFINED,
                 Vk.finalLayout = Vk.IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
             },
-            Vk.subpasses = V.singleton (Vk.zero :: Vk.SubpassDescription) {
+            Vk.subpasses = V.singleton Vk.SubpassDescription {
+                Vk.flags = zeroBits,
                 Vk.pipelineBindPoint = Vk.PIPELINE_BIND_POINT_GRAPHICS,
+                Vk.inputAttachments = V.empty,
+                Vk.colorAttachments = V.empty,
+                Vk.resolveAttachments = V.empty,
                 Vk.depthStencilAttachment = Just Vk.AttachmentReference {
                     Vk.attachment = 0,
                     Vk.layout = Vk.IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                }
+                },
+                Vk.preserveAttachments = V.empty
             },
-            Vk.dependencies = V.singleton (Vk.zero :: Vk.SubpassDependency) {
+            Vk.dependencies = V.singleton Vk.SubpassDependency {
                 Vk.srcSubpass = Vk.SUBPASS_EXTERNAL,
+                Vk.dstSubpass = 0,
                 Vk.srcStageMask = Vk.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                 Vk.dstStageMask = Vk.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                Vk.dstAccessMask = Vk.ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+                Vk.srcAccessMask = zeroBits,
+                Vk.dstAccessMask = Vk.ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                Vk.dependencyFlags = zeroBits
             }
         }
         Nothing
 
     rendererShaderVert <- Vk.createShaderModule
         environmentDevice
-        Vk.zero { -- Vk.ShaderModuleCreateInfo
+        Vk.ShaderModuleCreateInfo {
+            Vk.next = (),
+            Vk.flags = zeroBits,
             Vk.code = [Vku.vert|
                 #version 450
 
@@ -249,10 +262,13 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
 
     rendererRenderPass <- Vk.createRenderPass
         environmentDevice
-        Vk.zero {   -- Vk.RenderPassCreateInfo
+        Vk.RenderPassCreateInfo {
+            Vk.next = (),
+            Vk.flags = zeroBits,
             Vk.attachments = V.fromList [
                 -- Color!
-                (Vk.zero :: Vk.AttachmentDescription) {
+                Vk.AttachmentDescription {
+                    Vk.flags = zeroBits,
                     Vk.format = rendererImageFormat,
                     Vk.samples = Vk.SAMPLE_COUNT_1_BIT,
                     Vk.loadOp = Vk.ATTACHMENT_LOAD_OP_CLEAR,
@@ -263,7 +279,8 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
                     Vk.finalLayout = rendererImageLayout
                 },
                 -- Stencil
-                (Vk.zero :: Vk.AttachmentDescription) {
+                Vk.AttachmentDescription {
+                    Vk.flags = zeroBits,
                     Vk.format = Vk.FORMAT_S8_UINT,
                     Vk.samples = Vk.SAMPLE_COUNT_1_BIT,
                     Vk.loadOp = Vk.ATTACHMENT_LOAD_OP_DONT_CARE,
@@ -274,29 +291,38 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
                     Vk.finalLayout = Vk.IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
                 }
             ],
-            Vk.subpasses = V.singleton (Vk.zero :: Vk.SubpassDescription) {
+            Vk.subpasses = V.singleton Vk.SubpassDescription {
+                Vk.flags = zeroBits,
                 Vk.pipelineBindPoint = Vk.PIPELINE_BIND_POINT_GRAPHICS,
+                Vk.inputAttachments = V.empty,
                 Vk.colorAttachments = V.singleton Vk.AttachmentReference {
                     Vk.attachment = 0,
                     Vk.layout = Vk.IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
                 },
+                Vk.resolveAttachments = V.empty,
                 Vk.depthStencilAttachment = Just Vk.AttachmentReference {
                     Vk.attachment = 1,
                     Vk.layout = Vk.IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
-                }
+                },
+                Vk.preserveAttachments = V.empty
             },
-            Vk.dependencies = V.singleton (Vk.zero :: Vk.SubpassDependency) {
+            Vk.dependencies = V.singleton Vk.SubpassDependency {
                 Vk.srcSubpass = Vk.SUBPASS_EXTERNAL,
+                Vk.dstSubpass = 0,
                 Vk.srcStageMask = Vk.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                 Vk.dstStageMask = Vk.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                Vk.dstAccessMask = Vk.ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+                Vk.srcAccessMask = zeroBits,
+                Vk.dstAccessMask = Vk.ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                Vk.dependencyFlags = zeroBits
             }
         }
         Nothing
 
     rendererPatternShaderVert <- Vk.createShaderModule
         environmentDevice
-        Vk.zero { -- Vk.ShaderModuleCreateInfo
+        Vk.ShaderModuleCreateInfo {
+            Vk.next = (),
+            Vk.flags = zeroBits,
             Vk.code = [Vku.vert|
                 #version 450
 
@@ -441,7 +467,9 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
 
     rendererPatternSolidShaderFrag <- Vk.createShaderModule
         environmentDevice
-        Vk.zero { -- Vk.ShaderModuleCreateInfo
+        Vk.ShaderModuleCreateInfo {
+            Vk.next = (),
+            Vk.flags = zeroBits,
             Vk.code = [Vku.frag|
                 #version 450
 
@@ -464,7 +492,9 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
 
     rendererPatternLinearShaderFrag <- Vk.createShaderModule
         environmentDevice
-        Vk.zero { -- Vk.ShaderModuleCreateInfo
+        Vk.ShaderModuleCreateInfo {
+            Vk.next = (),
+            Vk.flags = zeroBits,
             Vk.code = [Vku.frag|
                 #version 450
 
@@ -494,7 +524,9 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
 
     rendererPatternRadialShaderFrag <- Vk.createShaderModule
         environmentDevice
-        Vk.zero { -- Vk.ShaderModuleCreateInfo
+        Vk.ShaderModuleCreateInfo {
+            Vk.next = (),
+            Vk.flags = zeroBits,
             Vk.code = [Vku.frag|
                 #version 450
 

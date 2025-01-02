@@ -145,7 +145,7 @@ newRenderState Renderer {..} = do
                 Vk.dstArrayElement = 0,
                 Vk.descriptorCount = 1,
                 Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                Vk.bufferInfo = V.singleton $ Vk.zero {
+                Vk.bufferInfo = V.singleton Vk.DescriptorBufferInfo {
                     Vk.buffer = typedBufferObject renderStateScreenUniform,
                     Vk.offset = 0,
                     Vk.range = Vk.WHOLE_SIZE
@@ -158,7 +158,7 @@ newRenderState Renderer {..} = do
                 Vk.dstArrayElement = 0,
                 Vk.descriptorCount = 1,
                 Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                Vk.bufferInfo = V.singleton $ Vk.zero {
+                Vk.bufferInfo = V.singleton Vk.DescriptorBufferInfo {
                     Vk.buffer = typedBufferObject renderStatePatternUniform,
                     Vk.offset = 0,
                     Vk.range = Vk.WHOLE_SIZE
@@ -242,8 +242,10 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
     Vk.resetCommandBuffer renderStateCommandBuffer zeroBits
     Vk.useCommandBuffer
         renderStateCommandBuffer
-        Vk.zero {
-            Vk.flags = Vk.COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+        Vk.CommandBufferBeginInfo {
+            Vk.next = (),
+            Vk.flags = Vk.COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+            Vk.inheritanceInfo = Nothing
         }
         $ do
         Vk.cmdSetViewport renderStateCommandBuffer 0 $ V.singleton Vk.Viewport {

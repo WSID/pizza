@@ -6,6 +6,7 @@
 module ImageRender where
 
 -- base
+import Data.Bits
 import Data.Word
 
 import Control.Monad.IO.Class
@@ -82,8 +83,10 @@ makeRenderedImage graphics = evalContT do
 
     -- Command Pool
     commandPool <- ContT $ Vk.withCommandPool environmentDevice
-        -- Vk.CommandPoolCreateInfo
-        Vk.zero { Vk.queueFamilyIndex = environmentGraphicsQFI }
+        Vk.CommandPoolCreateInfo {
+            Vk.flags = zeroBits,
+            Vk.queueFamilyIndex = environmentGraphicsQFI
+        }
         Nothing bracket
 
     commandBuffers <- ContT $ Vk.withCommandBuffers environmentDevice
@@ -97,17 +100,25 @@ makeRenderedImage graphics = evalContT do
 
     let commandBuffer = V.head commandBuffers
 
-    liftIO $ Vk.useCommandBuffer commandBuffer Vk.zero {
-        Vk.flags = Vk.COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+    liftIO $ Vk.useCommandBuffer commandBuffer Vk.CommandBufferBeginInfo {
+        Vk.next = (),
+        Vk.flags = Vk.COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        Vk.inheritanceInfo = Nothing
     } $ do
         Vk.cmdCopyImageToBuffer commandBuffer
             (renderTargetImage renderTarget) Vk.IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
             staging
-            (V.singleton $ Vk.zero {
-                Vk.imageSubresource = Vk.zero {
+            (V.singleton Vk.BufferImageCopy {
+                Vk.bufferOffset = 0,
+                Vk.bufferRowLength = 0,
+                Vk.bufferImageHeight = 0,
+                Vk.imageSubresource = Vk.ImageSubresourceLayers {
                     Vk.aspectMask = Vk.IMAGE_ASPECT_COLOR_BIT,
+                    Vk.mipLevel = 0,
+                    Vk.baseArrayLayer = 0,
                     Vk.layerCount = 1
                 },
+                Vk.imageOffset = Vk.Offset3D 0 0 0,
                 Vk.imageExtent = Vk.Extent3D 200 200 1
             })
 

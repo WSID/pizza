@@ -9,6 +9,8 @@ import Control.Monad.IO.Class
 import Data.Bits
 import Data.Foldable
 
+import Foreign.Ptr
+
 -- vector
 import qualified Data.Vector as V
 import Data.Vector (Vector)
@@ -74,19 +76,30 @@ newBaseRenderTarget Renderer {..} image width height imageFormat = do
 
     (renderTargetStencil, renderTargetStencilAlloc, _) <- Vma.createImage
         environmentAllocator
-        (Vk.zero :: Vk.ImageCreateInfo '[]) {
+        Vk.ImageCreateInfo {
+            Vk.next = (),
+            Vk.flags = zeroBits,
             Vk.imageType = Vk.IMAGE_TYPE_2D,
             Vk.format = Vk.FORMAT_S8_UINT,
             Vk.extent = Vk.Extent3D (fromIntegral width) (fromIntegral height) 1,
             Vk.mipLevels = 1,
             Vk.arrayLayers = 1,
             Vk.samples = Vk.SAMPLE_COUNT_1_BIT,
+            Vk.tiling = Vk.IMAGE_TILING_OPTIMAL,
             Vk.usage = Vk.IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+            Vk.sharingMode = Vk.SHARING_MODE_EXCLUSIVE,
             Vk.queueFamilyIndices = V.singleton environmentGraphicsQFI,
             Vk.initialLayout = Vk.IMAGE_LAYOUT_UNDEFINED
         }
-        (Vk.zero :: Vma.AllocationCreateInfo) {
-            Vma.preferredFlags = Vk.MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+        Vma.AllocationCreateInfo {
+            Vma.flags = zeroBits,
+            Vma.usage = Vma.MEMORY_USAGE_AUTO,
+            Vma.requiredFlags = zeroBits,
+            Vma.preferredFlags = Vk.MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            Vma.memoryTypeBits = 0,
+            Vma.pool = Vk.NULL_HANDLE,
+            Vma.userData = nullPtr,
+            Vma.priority = 0
         }
 
     renderTargetStencilView <- Vk.createImageView
@@ -156,8 +169,10 @@ recordBaseRenderTarget cmdbuf Renderer {..} width height BaseRenderTarget {..} i
 
     Vk.resetCommandBuffer cmdbuf zeroBits
 
-    Vk.useCommandBuffer cmdbuf Vk.zero {
-        Vk.flags = Vk.COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+    Vk.useCommandBuffer cmdbuf Vk.CommandBufferBeginInfo {
+        Vk.next = (),
+        Vk.flags = Vk.COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        Vk.inheritanceInfo = Nothing
     } $ do
         Vk.cmdSetViewport cmdbuf 0 $ V.singleton Vk.Viewport {
             Vk.x = 0,
@@ -190,8 +205,9 @@ newRenderTarget Renderer {..} width height imageFormat = do
 
     (renderTargetImage, renderTargetImageAlloc, _) <- Vma.createImage
         environmentAllocator
-        -- Vk.ImageCreateInfo []
-        Vk.zero {
+        Vk.ImageCreateInfo {
+            Vk.next = (),
+            Vk.flags = zeroBits,
             Vk.imageType = Vk.IMAGE_TYPE_2D,
             Vk.format = imageFormat,
             Vk.extent = Vk.Extent3D widthw heightw 1,
@@ -205,8 +221,15 @@ newRenderTarget Renderer {..} width height imageFormat = do
             Vk.initialLayout = Vk.IMAGE_LAYOUT_UNDEFINED
         }
         -- Vma.AllocationCreateInfo
-        Vk.zero {
-            Vma.usage = Vma.MEMORY_USAGE_AUTO
+        Vma.AllocationCreateInfo {
+            Vma.flags = zeroBits,
+            Vma.usage = Vma.MEMORY_USAGE_AUTO,
+            Vma.requiredFlags = zeroBits,
+            Vma.preferredFlags = zeroBits,
+            Vma.memoryTypeBits = 0,
+            Vma.pool = Vk.NULL_HANDLE,
+            Vma.userData = nullPtr,
+            Vma.priority = 0
         }
 
     renderTargetBase <- newBaseRenderTarget Renderer {..} renderTargetImage width height imageFormat
