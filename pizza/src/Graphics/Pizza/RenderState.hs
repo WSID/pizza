@@ -127,7 +127,11 @@ newRenderState Renderer {..} = do
             Vk.descriptorPool = rendererDescriptorPool,
             Vk.setLayouts = V.fromList [ rendererScreenDSLayout, rendererPatternDSLayout ]
         }
-    let [renderStateScreenDS, renderStatePatternDS] = V.toList descriptorSets
+
+    let (renderStateScreenDS, renderStatePatternDS) =
+            case V.toList descriptorSets of
+                [a, b] -> (a, b)
+                _ -> error "newRenderState: Incorrect number of state descriptor sets returned!"
 
     renderStateScreenUniform <- newTypedBufferN rendererEnvironment Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 1
     renderStatePatternUniform <- newTypedBufferSized rendererEnvironment Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 64
@@ -218,11 +222,14 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
 
     -- Indices
 
-    let pathNvertices = (fromIntegral . length) <$> pathVertices
+    let pathNvertices = fromIntegral . length <$> pathVertices
     let pathIndexEnds = scanl (+) 0 pathNvertices
     let pathIndexRanges = zipWith (\a b -> [a .. pred b]) pathIndexEnds (tail pathIndexEnds)
 
-    let pathIndices = fmap (\(f: s: r) -> zipWith (\a b -> V3 f a b) (s : r) r) pathIndexRanges
+    let fanIndices (f: s: r) = zipWith (V3 f) (s : r) r
+        fanIndices _ = []
+
+    let pathIndices = fmap fanIndices pathIndexRanges
     let indices = join pathIndices
 
     iptr <- mapTypedBuffer rendererEnvironment renderStateIndex
@@ -277,7 +284,7 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
                 rendererStencilPipelineLayout
                 0
                 (V.singleton renderStateScreenDS)
-                (V.empty)
+                V.empty
 
             Vk.cmdBindPipeline
                 renderStateCommandBuffer
@@ -294,7 +301,7 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
                 (V.singleton $ typedBufferObject renderStateVertex)
                 (V.singleton 0)
 
-            Vk.cmdDrawIndexed renderStateCommandBuffer (3 * (fromIntegral $ length indices)) 1 0 0 0
+            Vk.cmdDrawIndexed renderStateCommandBuffer (3 * fromIntegral (length indices)) 1 0 0 0
 
         -- Color phase
         Vk.cmdUseRenderPass
@@ -314,7 +321,7 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
                 rendererPatternLayout
                 0
                 (V.singleton renderStateScreenDS)
-                (V.empty)
+                V.empty
 
             Vk.cmdBindPipeline
                 renderStateCommandBuffer
@@ -341,7 +348,7 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
                 rendererPatternLayout
                 1
                 (V.singleton renderStatePatternDS)
-                (V.empty)
+                V.empty
 
             Vk.cmdDrawIndexed renderStateCommandBuffer 6 1 0 0 0
 
@@ -424,4 +431,5 @@ renderRenderStateTargetSwapchain Renderer {..} RenderStateSwapchain {..} graphic
 
     let waitOp = void $ Vk.waitForFences environmentDevice (V.singleton renderStateFence) True maxBound
 
-    pure $ (index, waitOp)
+    pure (index, waitOp)
+

@@ -565,7 +565,11 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
         Nothing
         -- TOOD: Move else to here!
 
-    let [rendererPatternSolid, rendererPatternLinear, rendererPatternRadial] = V.toList pipelines
+
+    let (rendererPatternSolid, rendererPatternLinear, rendererPatternRadial) =
+            case V.toList pipelines of
+                [a, b, c] -> (a, b, c)
+                _ -> error "newRenderer: Got incorrect number of pipeline!"
 
     rendererDescriptorPool <- Vk.createDescriptorPool
         environmentDevice

@@ -427,7 +427,7 @@ testPath paths mask = do
     assert $ checkImages actual expected
 
 batched :: Int -> [a] -> [[a]]
-batched n [] = []
+batched _ [] = []
 batched n a = let (h, t) = splitAt n a in h : batched n t
 
 printDiff :: [Bool] -> IO ()

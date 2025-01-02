@@ -122,13 +122,9 @@ makeRenderedImage graphics = evalContT do
                 Vk.imageExtent = Vk.Extent3D 200 200 1
             })
 
-
-
-    renderSem <- ContT $ Vk.withSemaphore environmentDevice Vk.zero Nothing bracket
-
     transferFence <- ContT $ Vk.withFence environmentDevice Vk.zero Nothing bracket
 
-    renderRenderStateTarget renderer renderState graphics renderTarget Nothing
+    _ <- renderRenderStateTarget renderer renderState graphics renderTarget Nothing
 
     Vk.queueSubmit environmentGraphicsQueue
         (V.singleton $ Vk.SomeStruct Vk.zero {
@@ -138,7 +134,7 @@ makeRenderedImage graphics = evalContT do
         })
         transferFence
 
-    Vk.waitForFences environmentDevice (V.singleton transferFence) True maxBound
+    _ <- Vk.waitForFences environmentDevice (V.singleton transferFence) True maxBound
 
     ptr <- ContT $ Vma.withMappedMemory environmentAllocator stagingAlloc bracket
 

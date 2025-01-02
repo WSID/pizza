@@ -43,7 +43,7 @@ continueSplitPoint PathSplitOptions {..} a b c = metDist || metHeight
 
 
 pathPartToPoints :: PathPart -> [V2 Float]
-pathPartToPoints p = pathPartToPoints' (PathSplitOptions 10 2) p
+pathPartToPoints = pathPartToPoints' (PathSplitOptions 10 2)
 
 pathPartToPoints' :: PathSplitOptions -> PathPart -> [V2 Float]
 pathPartToPoints' _ (PathPoint a) = [a]
@@ -68,5 +68,6 @@ polygon vs = Path $ fmap PathPoint vs
 
 circle :: V2 Float -> Float -> Path
 circle center radius = Path [ PathCurve $ arc center radius 0 (2 * pi) ]
+
 
 

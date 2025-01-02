@@ -60,15 +60,29 @@ main = do
                     "Simple Case" ~: do
                         let curve = lineCurve (V2 0 0) (V2 100 0)
                         let r0 = mkCurveRunner curve 16
-                        let CurveRunning t1 r1 = runCurveRunner r0 10
-                        let CurveRunning t2 r2 = runCurveRunner r1 30
-                        (t1, t2) ~?= (0.1, 0.4),
+
+                        (t1, r1) <- case runCurveRunner r0 10 of
+                            CurveDone leftover -> assertFailure ("Running from 0 to 10: Curve Done - " <> show leftover)
+                            CurveRunning t r -> pure (t, r)
+
+                        t2 <- case runCurveRunner r1 30 of
+                            CurveDone leftover -> assertFailure ("Running from 10 to 30: Curve Done - " <> show leftover)
+                            CurveRunning t _ -> pure t
+
+                        (t1, t2) @?= (0.1, 0.4),
 
                     "Arc" ~: do
                         let curve = arc (V2 0 0) 100 0 2
                         let r0 = mkCurveRunner curve 256
-                        let CurveRunning t1 r1 = runCurveRunner r0 20
-                        let CurveRunning t2 r2 = runCurveRunner r1 40
+
+                        (t1, r1) <- case runCurveRunner r0 20 of
+                            CurveDone leftover -> assertFailure ("Running from 0 to 20: Curve Done - " <> show leftover)
+                            CurveRunning t r -> pure (t, r)
+
+                        t2 <- case runCurveRunner r1 40 of
+                            CurveDone leftover -> assertFailure ("Running from 20 to 40: Curve Done - " <> show leftover)
+                            CurveRunning t _ -> pure t
+
                         assertBool "t1 ~= 0.1" (abs (t1 - 0.1) < 0.001)
                         assertBool "t2 ~= 0.3" (abs (t2 - 0.3) < 0.001)
                 ],
@@ -101,3 +115,4 @@ lineCurve start end = Curve {
   curvePosition = \t -> lerp t start end,
   curveDirection = const (end - start)
 }
+
