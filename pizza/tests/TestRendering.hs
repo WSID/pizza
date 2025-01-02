@@ -238,17 +238,19 @@ maskDiamond :: [Bool]
 maskDiamond = contains <$> coordinates
   where
     contains (V2 x y)
-        | x < 100   = (100 - x <= y) && (y <= 100 + x)
-        | otherwise = (x - 100 <= y) && (y <= 300 - x)
+        | x < 100   = inRange (100 - x) (100 + x) y
+        | otherwise = inRange (x - 100) (300 - x) y
 
 maskDoubleDiamond :: [Bool]
 maskDoubleDiamond = contains <$> coordinates
   where
     contains (V2 x y)
-        | x < 50    = (100 - 2 * x <= y) && (y <= 100 + 2 * x)
-        | x < 100   = (2 * x - 100 <= y) && (y <= 300 - 2 * x)
-        | x < 150   = (300 - 2 * x <= y) && (y <= (-100) + 2 * x)
-        | otherwise = (2 * x - 300 <= y) && (y <= 500 - 2 * x)
+        | x < 50    = inRange (100 - x2) (100 + x2) y
+        | x < 100   = inRange (x2 - 100) (300 - x2) y
+        | x < 150   = inRange (300 - x2) ((-100) + x2) y
+        | otherwise = inRange (x2 - 300) (500 - x2) y
+      where
+        x2 = x * 2
 
 maskHalfCircle :: [Bool]
 maskHalfCircle = contains <$> coordinates
@@ -268,18 +270,18 @@ maskCornerBezier = contains <$> coordinates
 maskOutlineCircle :: [Bool]
 maskOutlineCircle = contains <$> coordinates
   where
-    contains coord = let dist = distance coord (V2 100 100) in (80 <= dist) && (dist <= 100)
+    contains coord = inRange 80 100 (distance coord (V2 100 100))
 
 maskJoinMiter :: [Bool]
 maskJoinMiter = contains <$> coordinates
   where
-    contains (V2 x y) = ((100 <= x) && (x <= 200)) || ((0 <= y) && (y <= 100))
+    contains (V2 x y) = inRange 100 200 x || inRange 0 100 y
 
 maskJoinRound :: [Bool]
 maskJoinRound = contains <$> coordinates
   where
-    inTop (V2 x y) = (0 <= y) && (y <= 100) && (0 <= x) && (x <= 150)
-    inRight (V2 x y) = (100 <= x) && (x <= 200) && (50 <= y) && (y <= 200)
+    inTop = inBox (V2 0 0) (V2 150 100)
+    inRight = inBox (V2 100 50) (V2 200 200)
     inRound pos = distance pos (V2 150 50) <= 50
     contains pos = inTop pos || inRight pos || inRound pos
 
@@ -288,7 +290,7 @@ maskJoinBevel :: [Bool]
 maskJoinBevel = contains <$> coordinates
   where
     contains (V2 x y) =
-        (((100 <= x) && (x <= 200)) || ((0 <= y) && (y <= 100))) && (x - y <= 150)
+        (inRange 100 200 x || inRange 0 100 y) && (x - y <= 150)
 
 maskCapNone :: [Bool]
 maskCapNone = inBox (V2 50 50) (V2 150 150) <$> coordinates
@@ -304,48 +306,31 @@ maskCapRound = contains <$> coordinates
 maskDashLine1 :: [Bool]
 maskDashLine1 = contains <$> coordinates
   where
-    contains (V2 x y) =
-        (
-            ((0 <= x) && (x <= 50)) ||
-            ((100 <= x) && (x <= 150))
-        )
-        && ((50 <= y) && (y <= 150))
+    contains (V2 x y) = (inRange 0 50 x || inRange 100 150 x) && inRange 50 150 y
 
 maskDashLine2 :: [Bool]
 maskDashLine2 = contains <$> coordinates
   where
-    contains (V2 x y) =
-        ((50 <= x) && (x <= 100))
-        && ((50 <= y) && (y <= 150))
+    contains = inBox (V2 50 50) (V2 100 150)
 
 maskDashCurve1 :: [Bool]
 maskDashCurve1 = contains <$> coordinates
   where
     contains p = let r = norm p; t150 = unangle p * 150 in
-        ((100 <= r) && (r <= 200)) &&
-        (
-            ((0 <= t150) && (t150 <= 50)) ||
-            ((100 <= t150) && (t150 <= 150))
-        )
+        inRange 100 200 r && (inRange 0 50 t150 || inRange 100 150 t150)
 
 maskDashCurve2 :: [Bool]
 maskDashCurve2 = contains <$> coordinates
   where
     contains p = let
-        V2 x y = p
         d = p  - V2 100 100
         r = norm d
         t100 = unangle d * 100
         in
+        inBox (V2 50 90) (V2 150 110) p ||
         (
-            ((50 <= x) && (x <= 150) && (90 <= y) && (y <= 110)) ||
-            (
-                (90 <= r) && (r <= 110) &&
-                (
-                    ((50 <= t100) && (t100 <= 100)) ||
-                    ((100 * pi + 50 <= t100 ) && (t100 <= 100 * pi + 100))
-                )
-            )
+            inRange 90 110 r &&
+            (inRange 50 100 t100 || inRange (100 * pi + 50) (100 * pi + 100) t100)
         )
 
 maskDashBox :: [Bool]
@@ -361,11 +346,11 @@ maskDashBox = contains <$> coordinates
 maskDashBox2 :: [Bool]
 maskDashBox2 = contains <$> coordinates
   where
-    contains p = and [
-            not $ inBox (V2 20 20) (V2 180 180) p,
-            not $ inBox (V2 70 0) (V2 130 200) p,
-            not $ inBox (V2 0 70) (V2 200 130) p
-        ]
+    contains p = not (
+            inBox (V2 20 20) (V2 180 180) p ||
+            inBox (V2 70 0) (V2 130 200) p ||
+            inBox (V2 0 70) (V2 200 130) p
+        )
 
 -- Test utility
 
@@ -404,8 +389,9 @@ checkImages a b = do
         rn = length r
         good = rs < (16 * rn)
 
-    putStrLn $ "Sum of Difference: " ++ show rs
-    putStrLn $ "  Difference per pixel: " ++ show (rs `div` rn)
+    putStrLn ""
+    putStrLn ("  Sum of Difference: " ++ show rs)
+    putStrLn ("  Difference per pixel: " ++ show (rs `div` rn))
 
     unless good $ do
         printDiff (zipWith (==) ai bi)
