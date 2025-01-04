@@ -2,7 +2,7 @@
 
 An GLFW based application, to check how pizza would draw.
 
-![Screenshot](readme/screencast2.mp4)
+![Screenshot](readme/screencast2.gif)
 
 Not meaningful, for ordinary users.
 
@@ -10,9 +10,10 @@ Not meaningful, for ordinary users.
 
 This was like that, when curve feature is added.
 
-![Screenshot](readme/screencast.mp4)
+![Screenshot](readme/screencast.gif)
 
-This is the first appearance, for polygon drawing.
+This is the first appearance, for polygon drawing with some patterns.
 
 ![Screenshot](readme/screenshot.png)
+
 
