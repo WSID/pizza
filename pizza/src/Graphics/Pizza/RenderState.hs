@@ -266,17 +266,21 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
 
         Vk.cmdSetScissor renderStateCommandBuffer 0 $ V.singleton renderArea
 
-        -- Stencil phase
         Vk.cmdUseRenderPass
             renderStateCommandBuffer
             Vk.zero {
-                Vk.renderPass = rendererStencilRenderPass,
-                Vk.framebuffer = renderTargetStencilBuffer,
+                Vk.renderPass = rendererRenderPass,
+                Vk.framebuffer = renderTargetFramebuffer,
                 Vk.renderArea = renderArea,
-                Vk.clearValues = V.singleton (Vk.DepthStencil (Vk.ClearDepthStencilValue 0 0))
+                Vk.clearValues = V.fromList [
+                        Vk.Color (Vk.Float32 0 0 0 1),
+                        Vk.DepthStencil (Vk.ClearDepthStencilValue 0 0)
+                    ]
             }
             Vk.SUBPASS_CONTENTS_INLINE
             $ do
+
+            -- Stencil phase
 
             Vk.cmdBindDescriptorSets
                 renderStateCommandBuffer
@@ -303,17 +307,8 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
 
             Vk.cmdDrawIndexed renderStateCommandBuffer (3 * fromIntegral (length indices)) 1 0 0 0
 
-        -- Color phase
-        Vk.cmdUseRenderPass
-            renderStateCommandBuffer
-            Vk.zero {
-                Vk.renderPass = rendererRenderPass,
-                Vk.framebuffer = renderTargetFramebuffer,
-                Vk.renderArea = renderArea,
-                Vk.clearValues = V.singleton (Vk.Color $ Vk.Float32 0 0 0 1)
-            }
-            Vk.SUBPASS_CONTENTS_INLINE
-            $ do
+            -- Color phase
+            Vk.cmdNextSubpass renderStateCommandBuffer Vk.SUBPASS_CONTENTS_INLINE
 
             Vk.cmdBindDescriptorSets
                 renderStateCommandBuffer

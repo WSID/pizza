@@ -31,7 +31,6 @@ data BaseRenderTarget = BaseRenderTarget {
     renderTargetStencil :: Vk.Image,
     renderTargetStencilAlloc :: Vma.Allocation,
     renderTargetStencilView :: Vk.ImageView,
-    renderTargetStencilBuffer :: Vk.Framebuffer,
     renderTargetFramebuffer :: Vk.Framebuffer
 }
 
@@ -125,18 +124,6 @@ newBaseRenderTarget Renderer {..} image width height imageFormat = do
         }
         Nothing
 
-    renderTargetStencilBuffer <- Vk.createFramebuffer
-        environmentDevice
-        Vk.zero {
-            Vk.renderPass = rendererStencilRenderPass,
-            Vk.attachments = V.singleton renderTargetStencilView,
-            Vk.width = fromIntegral width,
-            Vk.height = fromIntegral height,
-            Vk.layers = 1
-        }
-        Nothing
-
-
     renderTargetFramebuffer <- Vk.createFramebuffer
         environmentDevice
         Vk.zero {
@@ -155,7 +142,6 @@ freeBaseRenderTarget :: (MonadIO m) => Renderer -> BaseRenderTarget -> m ()
 freeBaseRenderTarget Renderer {..} BaseRenderTarget {..} = do
     let Environment {..} = rendererEnvironment
     Vk.destroyFramebuffer environmentDevice renderTargetFramebuffer Nothing
-    Vk.destroyFramebuffer environmentDevice renderTargetStencilBuffer Nothing
     Vk.destroyImageView environmentDevice renderTargetStencilView Nothing
     Vma.destroyImage environmentAllocator renderTargetStencil renderTargetStencilAlloc
     Vk.destroyImageView environmentDevice renderTargetImageView Nothing

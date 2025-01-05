@@ -42,18 +42,16 @@ data Renderer = Renderer {
     rendererImageFormat :: Vk.Format,
     rendererImageLayout :: Vk.ImageLayout,
 
-    -- Stencil Render Pass
-    -- TOOD: Check we can merge two as single render pass.
-    rendererStencilRenderPass :: Vk.RenderPass,
+    -- Render Pass
+    rendererRenderPass :: Vk.RenderPass,
+
+    -- Stencil Vertex Handling
     rendererShaderVert :: Vk.ShaderModule,
     rendererScreenDSLayout :: Vk.DescriptorSetLayout,
 
     -- Stencil Pipeline
     rendererStencilPipelineLayout :: Vk.PipelineLayout,
     rendererStencilPipeline :: Vk.Pipeline,
-
-    -- Pattern Render Pass
-    rendererRenderPass :: Vk.RenderPass,
 
     -- Pattern pipeline common
     rendererPatternShaderVert :: Vk.ShaderModule,
@@ -84,34 +82,69 @@ newRenderer :: (MonadIO m) => Environment -> Vk.Format -> Vk.ImageLayout -> m Re
 newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
     let Environment {..} = rendererEnvironment
 
-    rendererStencilRenderPass <- Vk.createRenderPass
+
+    rendererRenderPass <- Vk.createRenderPass
         environmentDevice
-        Vk.RenderPassCreateInfo { -- Vk.RenderPassCreateInfo
+        Vk.RenderPassCreateInfo {
             Vk.next = (),
             Vk.flags = zeroBits,
-            Vk.attachments = V.singleton Vk.AttachmentDescription {
-                Vk.flags = zeroBits,
-                Vk.format = Vk.FORMAT_S8_UINT,
-                Vk.samples = Vk.SAMPLE_COUNT_1_BIT,
-                Vk.loadOp = Vk.ATTACHMENT_LOAD_OP_DONT_CARE,
-                Vk.storeOp = Vk.ATTACHMENT_STORE_OP_DONT_CARE,
-                Vk.stencilLoadOp = Vk.ATTACHMENT_LOAD_OP_CLEAR,
-                Vk.stencilStoreOp = Vk.ATTACHMENT_STORE_OP_STORE,
-                Vk.initialLayout = Vk.IMAGE_LAYOUT_UNDEFINED,
-                Vk.finalLayout = Vk.IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
-            },
-            Vk.subpasses = V.singleton Vk.SubpassDescription {
-                Vk.flags = zeroBits,
-                Vk.pipelineBindPoint = Vk.PIPELINE_BIND_POINT_GRAPHICS,
-                Vk.inputAttachments = V.empty,
-                Vk.colorAttachments = V.empty,
-                Vk.resolveAttachments = V.empty,
-                Vk.depthStencilAttachment = Just Vk.AttachmentReference {
-                    Vk.attachment = 0,
-                    Vk.layout = Vk.IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+            Vk.attachments = V.fromList [
+                -- Color!
+                Vk.AttachmentDescription {
+                    Vk.flags = zeroBits,
+                    Vk.format = rendererImageFormat,
+                    Vk.samples = Vk.SAMPLE_COUNT_1_BIT,
+                    Vk.loadOp = Vk.ATTACHMENT_LOAD_OP_CLEAR,
+                    Vk.storeOp = Vk.ATTACHMENT_STORE_OP_STORE,
+                    Vk.stencilLoadOp = Vk.ATTACHMENT_LOAD_OP_DONT_CARE,
+                    Vk.stencilStoreOp = Vk.ATTACHMENT_STORE_OP_DONT_CARE,
+                    Vk.initialLayout = Vk.IMAGE_LAYOUT_UNDEFINED,
+                    Vk.finalLayout = rendererImageLayout
                 },
-                Vk.preserveAttachments = V.empty
-            },
+                -- Stencil
+                Vk.AttachmentDescription {
+                    Vk.flags = zeroBits,
+                    Vk.format = Vk.FORMAT_S8_UINT,
+                    Vk.samples = Vk.SAMPLE_COUNT_1_BIT,
+                    Vk.loadOp = Vk.ATTACHMENT_LOAD_OP_DONT_CARE,
+                    Vk.storeOp = Vk.ATTACHMENT_STORE_OP_DONT_CARE,
+                    Vk.stencilLoadOp = Vk.ATTACHMENT_LOAD_OP_CLEAR,
+                    Vk.stencilStoreOp = Vk.ATTACHMENT_STORE_OP_DONT_CARE,
+                    Vk.initialLayout = Vk.IMAGE_LAYOUT_UNDEFINED,
+                    Vk.finalLayout = Vk.IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                }
+            ],
+            Vk.subpasses = V.fromList [
+                -- 0 : Stencil
+                Vk.SubpassDescription {
+                    Vk.flags = zeroBits,
+                    Vk.pipelineBindPoint = Vk.PIPELINE_BIND_POINT_GRAPHICS,
+                    Vk.inputAttachments = V.empty,
+                    Vk.colorAttachments = V.empty,
+                    Vk.resolveAttachments = V.empty,
+                    Vk.depthStencilAttachment = Just Vk.AttachmentReference {
+                        Vk.attachment = 1,
+                        Vk.layout = Vk.IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                    },
+                    Vk.preserveAttachments = V.empty
+                },
+                -- 1 : Color
+                Vk.SubpassDescription {
+                    Vk.flags = zeroBits,
+                    Vk.pipelineBindPoint = Vk.PIPELINE_BIND_POINT_GRAPHICS,
+                    Vk.inputAttachments = V.empty,
+                    Vk.colorAttachments = V.singleton Vk.AttachmentReference {
+                        Vk.attachment = 0,
+                        Vk.layout = Vk.IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+                    },
+                    Vk.resolveAttachments = V.empty,
+                    Vk.depthStencilAttachment = Just Vk.AttachmentReference {
+                        Vk.attachment = 1,
+                        Vk.layout = Vk.IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+                    },
+                    Vk.preserveAttachments = V.empty
+                }
+            ],
             Vk.dependencies = V.singleton Vk.SubpassDependency {
                 Vk.srcSubpass = Vk.SUBPASS_EXTERNAL,
                 Vk.dstSubpass = 0,
@@ -248,7 +281,7 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
             },
 
             Vk.layout = rendererStencilPipelineLayout,
-            Vk.renderPass = rendererStencilRenderPass,
+            Vk.renderPass = rendererRenderPass,
             Vk.subpass = 0
         }
 
@@ -259,64 +292,6 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
         Nothing
 
     let rendererStencilPipeline = V.head stencilPipelines
-
-    rendererRenderPass <- Vk.createRenderPass
-        environmentDevice
-        Vk.RenderPassCreateInfo {
-            Vk.next = (),
-            Vk.flags = zeroBits,
-            Vk.attachments = V.fromList [
-                -- Color!
-                Vk.AttachmentDescription {
-                    Vk.flags = zeroBits,
-                    Vk.format = rendererImageFormat,
-                    Vk.samples = Vk.SAMPLE_COUNT_1_BIT,
-                    Vk.loadOp = Vk.ATTACHMENT_LOAD_OP_CLEAR,
-                    Vk.storeOp = Vk.ATTACHMENT_STORE_OP_STORE,
-                    Vk.stencilLoadOp = Vk.ATTACHMENT_LOAD_OP_DONT_CARE,
-                    Vk.stencilStoreOp = Vk.ATTACHMENT_STORE_OP_DONT_CARE,
-                    Vk.initialLayout = Vk.IMAGE_LAYOUT_UNDEFINED,
-                    Vk.finalLayout = rendererImageLayout
-                },
-                -- Stencil
-                Vk.AttachmentDescription {
-                    Vk.flags = zeroBits,
-                    Vk.format = Vk.FORMAT_S8_UINT,
-                    Vk.samples = Vk.SAMPLE_COUNT_1_BIT,
-                    Vk.loadOp = Vk.ATTACHMENT_LOAD_OP_DONT_CARE,
-                    Vk.storeOp = Vk.ATTACHMENT_STORE_OP_DONT_CARE,
-                    Vk.stencilLoadOp = Vk.ATTACHMENT_LOAD_OP_LOAD,
-                    Vk.stencilStoreOp = Vk.ATTACHMENT_STORE_OP_DONT_CARE,
-                    Vk.initialLayout = Vk.IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-                    Vk.finalLayout = Vk.IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                }
-            ],
-            Vk.subpasses = V.singleton Vk.SubpassDescription {
-                Vk.flags = zeroBits,
-                Vk.pipelineBindPoint = Vk.PIPELINE_BIND_POINT_GRAPHICS,
-                Vk.inputAttachments = V.empty,
-                Vk.colorAttachments = V.singleton Vk.AttachmentReference {
-                    Vk.attachment = 0,
-                    Vk.layout = Vk.IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
-                },
-                Vk.resolveAttachments = V.empty,
-                Vk.depthStencilAttachment = Just Vk.AttachmentReference {
-                    Vk.attachment = 1,
-                    Vk.layout = Vk.IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
-                },
-                Vk.preserveAttachments = V.empty
-            },
-            Vk.dependencies = V.singleton Vk.SubpassDependency {
-                Vk.srcSubpass = Vk.SUBPASS_EXTERNAL,
-                Vk.dstSubpass = 0,
-                Vk.srcStageMask = Vk.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                Vk.dstStageMask = Vk.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                Vk.srcAccessMask = zeroBits,
-                Vk.dstAccessMask = Vk.ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                Vk.dependencyFlags = zeroBits
-            }
-        }
-        Nothing
 
     rendererPatternShaderVert <- Vk.createShaderModule
         environmentDevice
@@ -437,7 +412,7 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
 
             Vk.layout = pipelineLayout,
             Vk.renderPass = rendererRenderPass,
-            Vk.subpass = 0
+            Vk.subpass = 1
         }
 
     rendererPatternDSLayout <- Vk.createDescriptorSetLayout
@@ -624,11 +599,10 @@ freeRenderer Renderer {..} = do
     Vk.destroyPipelineLayout environmentDevice rendererPatternLayout Nothing
     Vk.destroyDescriptorSetLayout environmentDevice rendererPatternDSLayout Nothing
     Vk.destroyShaderModule environmentDevice rendererPatternShaderVert Nothing
-    Vk.destroyRenderPass environmentDevice rendererRenderPass Nothing
     Vk.destroyPipeline environmentDevice rendererStencilPipeline Nothing
     Vk.destroyPipelineLayout environmentDevice rendererStencilPipelineLayout Nothing
     Vk.destroyDescriptorSetLayout environmentDevice rendererScreenDSLayout Nothing
     Vk.destroyShaderModule environmentDevice rendererShaderVert Nothing
-    Vk.destroyRenderPass environmentDevice rendererStencilRenderPass Nothing
+    Vk.destroyRenderPass environmentDevice rendererRenderPass Nothing
     Vk.destroyCommandPool environmentDevice rendererCommandPool Nothing
     Vk.destroyDescriptorPool environmentDevice rendererDescriptorPool Nothing
