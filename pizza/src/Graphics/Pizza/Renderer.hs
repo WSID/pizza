@@ -114,37 +114,21 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
                     Vk.finalLayout = Vk.IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
                 }
             ],
-            Vk.subpasses = V.fromList [
-                -- 0 : Stencil
-                Vk.SubpassDescription {
-                    Vk.flags = zeroBits,
-                    Vk.pipelineBindPoint = Vk.PIPELINE_BIND_POINT_GRAPHICS,
-                    Vk.inputAttachments = V.empty,
-                    Vk.colorAttachments = V.empty,
-                    Vk.resolveAttachments = V.empty,
-                    Vk.depthStencilAttachment = Just Vk.AttachmentReference {
-                        Vk.attachment = 1,
-                        Vk.layout = Vk.IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                    },
-                    Vk.preserveAttachments = V.empty
+            Vk.subpasses = V.singleton Vk.SubpassDescription {
+                Vk.flags = zeroBits,
+                Vk.pipelineBindPoint = Vk.PIPELINE_BIND_POINT_GRAPHICS,
+                Vk.inputAttachments = V.empty,
+                Vk.colorAttachments = V.singleton Vk.AttachmentReference {
+                    Vk.attachment = 0,
+                    Vk.layout = Vk.IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
                 },
-                -- 1 : Color
-                Vk.SubpassDescription {
-                    Vk.flags = zeroBits,
-                    Vk.pipelineBindPoint = Vk.PIPELINE_BIND_POINT_GRAPHICS,
-                    Vk.inputAttachments = V.empty,
-                    Vk.colorAttachments = V.singleton Vk.AttachmentReference {
-                        Vk.attachment = 0,
-                        Vk.layout = Vk.IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
-                    },
-                    Vk.resolveAttachments = V.empty,
-                    Vk.depthStencilAttachment = Just Vk.AttachmentReference {
-                        Vk.attachment = 1,
-                        Vk.layout = Vk.IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
-                    },
-                    Vk.preserveAttachments = V.empty
-                }
-            ],
+                Vk.resolveAttachments = V.empty,
+                Vk.depthStencilAttachment = Just Vk.AttachmentReference {
+                    Vk.attachment = 1,
+                    Vk.layout = Vk.IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                },
+                Vk.preserveAttachments = V.empty
+            },
             Vk.dependencies = V.singleton Vk.SubpassDependency {
                 Vk.srcSubpass = Vk.SUBPASS_EXTERNAL,
                 Vk.dstSubpass = 0,
@@ -271,7 +255,20 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
                 }
             },
 
-            Vk.colorBlendState = Nothing,
+            Vk.colorBlendState = Just $ Vk.SomeStruct Vk.zero {
+                Vk.logicOpEnable = False,
+                Vk.attachmentCount = 1,
+                Vk.attachments = V.fromList [
+                    Vk.zero {
+                        Vk.colorWriteMask =
+                            Vk.COLOR_COMPONENT_R_BIT .|.
+                            Vk.COLOR_COMPONENT_G_BIT .|.
+                            Vk.COLOR_COMPONENT_B_BIT .|.
+                            Vk.COLOR_COMPONENT_A_BIT,
+                        Vk.blendEnable = False
+                    }
+                ]
+            },
 
             Vk.dynamicState = Just Vk.zero {
                 Vk.dynamicStates = V.fromList [
@@ -412,7 +409,7 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
 
             Vk.layout = pipelineLayout,
             Vk.renderPass = rendererRenderPass,
-            Vk.subpass = 1
+            Vk.subpass = 0
         }
 
     rendererPatternDSLayout <- Vk.createDescriptorSetLayout

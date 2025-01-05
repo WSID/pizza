@@ -279,7 +279,6 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
             }
             Vk.SUBPASS_CONTENTS_INLINE
             $ do
-
             -- Stencil phase
 
             Vk.cmdBindDescriptorSets
@@ -308,7 +307,6 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
             Vk.cmdDrawIndexed renderStateCommandBuffer (3 * fromIntegral (length indices)) 1 0 0 0
 
             -- Color phase
-            Vk.cmdNextSubpass renderStateCommandBuffer Vk.SUBPASS_CONTENTS_INLINE
 
             Vk.cmdBindDescriptorSets
                 renderStateCommandBuffer
