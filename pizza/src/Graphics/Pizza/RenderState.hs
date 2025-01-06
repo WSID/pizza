@@ -8,9 +8,11 @@ import Control.Monad
 import Control.Monad.IO.Class
 
 import Data.Bits
+import Data.Foldable
+import Data.Traversable
+import Data.List (zip4)
 import Data.Word
 
-import Foreign.Ptr
 import Foreign.Storable
 import Foreign.Marshal.Array
 
@@ -134,7 +136,7 @@ newRenderState Renderer {..} = do
                 _ -> error "newRenderState: Incorrect number of state descriptor sets returned!"
 
     renderStateScreenUniform <- newTypedBufferN rendererEnvironment Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 1
-    renderStatePatternUniform <- newTypedBufferSized rendererEnvironment Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 64
+    renderStatePatternUniform <- newTypedBufferSized rendererEnvironment Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 1024
     renderStateSemaphore <- Vk.createSemaphore environmentDevice Vk.zero Nothing
     renderStateFence <- Vk.createFence environmentDevice Vk.zero Nothing
 
@@ -161,11 +163,11 @@ newRenderState Renderer {..} = do
                 Vk.dstBinding = 0,
                 Vk.dstArrayElement = 0,
                 Vk.descriptorCount = 1,
-                Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
                 Vk.bufferInfo = V.singleton Vk.DescriptorBufferInfo {
                     Vk.buffer = typedBufferObject renderStatePatternUniform,
                     Vk.offset = 0,
-                    Vk.range = Vk.WHOLE_SIZE
+                    Vk.range = 64
                 }
             }
         ])
@@ -204,7 +206,6 @@ freeRenderStateSwapchain Renderer {..} RenderStateSwapchain {..} = do
 
 setRenderStateTargetBase :: (MonadIO m) => Renderer -> RenderState -> Graphics -> Int -> Int -> BaseRenderTarget -> m ()
 setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height BaseRenderTarget {..} = do
-    let Graphics paths pattern = graphics
     let renderArea = Vk.Rect2D {
         Vk.offset = Vk.Offset2D 0 0,
         Vk.extent = Vk.Extent2D (fromIntegral width) (fromIntegral height)
@@ -212,38 +213,39 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
 
     -- Vertex
 
-    let pathVertices = pathToPoints <$> paths
-    let vertices = join pathVertices
+    let Graphics drawItems = graphics
 
+    let drawItemToLower firstIndex (DrawShape paths pattern) =
+            let (lastIndex, v, i) = triangulateShape firstIndex paths
+            in (lastIndex, (v, i, pattern))
+
+    let (_totalCount, lowDrawItems) = mapAccumL drawItemToLower 0 drawItems
+
+    let allVertices = foldMap (\(v, _, _) -> v) lowDrawItems
+
+    let patOffset = fromIntegral rendererMinUniformBufferOffsetAlign
+    let patterns = fmap (\(_, _, p) -> p) lowDrawItems
+
+    let indicesCount = fmap (\(_, i, _) -> fromIntegral $ length i) lowDrawItems
+    let indicesBreaks = scanl (+) 0 indicesCount
+    let indicesGroups = zip4 indicesBreaks indicesCount patterns [0, patOffset .. ]
+    let allIndices = foldMap (\(_, i, _) -> i) lowDrawItems
 
     vptr <- mapTypedBuffer rendererEnvironment renderStateVertex
-    liftIO $ pokeArray vptr vertices
+    liftIO $ pokeArray vptr allVertices
     unmapTypedBuffer rendererEnvironment renderStateVertex
 
-    -- Indices
-
-    let pathNvertices = fromIntegral . length <$> pathVertices
-    let pathIndexEnds = scanl (+) 0 pathNvertices
-    let pathIndexRanges = zipWith (\a b -> [a .. pred b]) pathIndexEnds (tail pathIndexEnds)
-
-    let fanIndices (f: s: r) = zipWith (V3 f) (s : r) r
-        fanIndices _ = []
-
-    let pathIndices = fmap fanIndices pathIndexRanges
-    let indices = join pathIndices
-
     iptr <- mapTypedBuffer rendererEnvironment renderStateIndex
-    liftIO $ pokeArray iptr indices
+    liftIO $ pokeArray iptr allIndices
     unmapTypedBuffer rendererEnvironment renderStateIndex
 
-    -- Pattern Uniforms
-
     writeTypedBuffer1 rendererEnvironment  renderStateScreenUniform (fromIntegral <$> V2 width height)
+
     ptr <- mapTypedBuffer rendererEnvironment renderStatePatternUniform
-    liftIO $ case pattern of
-        PatternSolid color -> poke (castPtr ptr) color
-        PatternLinear ps pe cs ce -> poke (castPtr ptr) (PreparationLinear ps pe cs ce)
-        PatternRadial ps r cs ce -> poke (castPtr ptr) (PreparationRadial ps r cs ce)
+    liftIO $ for_ indicesGroups $ \(_, _, pattern, offset) -> case pattern of
+        PatternSolid color -> pokeByteOff ptr offset color
+        PatternLinear ps pe cs ce -> pokeByteOff ptr offset (PreparationLinear ps pe cs ce)
+        PatternRadial ps r cs ce -> pokeByteOff ptr offset (PreparationRadial ps r cs ce)
     unmapTypedBuffer rendererEnvironment renderStatePatternUniform
 
     Vk.resetCommandBuffer renderStateCommandBuffer zeroBits
@@ -279,71 +281,100 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
             }
             Vk.SUBPASS_CONTENTS_INLINE
             $ do
-            -- Stencil phase
 
-            Vk.cmdBindDescriptorSets
-                renderStateCommandBuffer
-                Vk.PIPELINE_BIND_POINT_GRAPHICS
-                rendererStencilPipelineLayout
-                0
-                (V.singleton renderStateScreenDS)
-                V.empty
+            -- For each indices ranges and patterns
+            for_ indicesGroups $ \(indexStart, indexCount, pattern, offset) -> do
+                recordRenderStateStencilCmd
+                    Renderer {..}
+                    RenderState {..}
+                    renderArea
+                    indexStart
+                    indexCount
 
-            Vk.cmdBindPipeline
-                renderStateCommandBuffer
-                Vk.PIPELINE_BIND_POINT_GRAPHICS
-                rendererStencilPipeline
+                recordRenderStateColorCmd
+                    Renderer {..}
+                    RenderState {..}
+                    pattern
+                    (fromIntegral offset)
 
-            Vk.cmdBindIndexBuffer
-                renderStateCommandBuffer
-                (typedBufferObject renderStateIndex) 0 Vk.INDEX_TYPE_UINT32
+recordRenderStateStencilCmd :: (MonadIO m) => Renderer -> RenderState -> Vk.Rect2D -> Word32 -> Word32 -> m ()
+recordRenderStateStencilCmd Renderer {..} RenderState {..} renderArea indexStart indexCount = do
+    Vk.cmdClearAttachments
+        renderStateCommandBuffer
+        (V.singleton Vk.ClearAttachment {
+            Vk.aspectMask = Vk.IMAGE_ASPECT_STENCIL_BIT,
+            Vk.colorAttachment = 0,
+            Vk.clearValue = Vk.DepthStencil (Vk.ClearDepthStencilValue 0 0)
+        })
+        (V.singleton Vk.ClearRect {
+            Vk.rect = renderArea,
+            Vk.baseArrayLayer = 0,
+            Vk.layerCount = 1
+        })
 
-            Vk.cmdBindVertexBuffers
-                renderStateCommandBuffer
-                0
-                (V.singleton $ typedBufferObject renderStateVertex)
-                (V.singleton 0)
+    Vk.cmdBindDescriptorSets
+        renderStateCommandBuffer
+        Vk.PIPELINE_BIND_POINT_GRAPHICS
+        rendererStencilPipelineLayout
+        0
+        (V.singleton renderStateScreenDS)
+        V.empty
 
-            Vk.cmdDrawIndexed renderStateCommandBuffer (3 * fromIntegral (length indices)) 1 0 0 0
+    Vk.cmdBindPipeline
+        renderStateCommandBuffer
+        Vk.PIPELINE_BIND_POINT_GRAPHICS
+        rendererStencilPipeline
 
-            -- Color phase
+    Vk.cmdBindIndexBuffer
+        renderStateCommandBuffer
+        (typedBufferObject renderStateIndex) 0 Vk.INDEX_TYPE_UINT32
 
-            Vk.cmdBindDescriptorSets
-                renderStateCommandBuffer
-                Vk.PIPELINE_BIND_POINT_GRAPHICS
-                rendererPatternLayout
-                0
-                (V.singleton renderStateScreenDS)
-                V.empty
+    Vk.cmdBindVertexBuffers
+        renderStateCommandBuffer
+        0
+        (V.singleton $ typedBufferObject renderStateVertex)
+        (V.singleton 0)
 
-            Vk.cmdBindPipeline
-                renderStateCommandBuffer
-                Vk.PIPELINE_BIND_POINT_GRAPHICS
-                (case pattern of
-                    PatternSolid _ -> rendererPatternSolid
-                    PatternLinear {} -> rendererPatternLinear
-                    PatternRadial {} -> rendererPatternRadial
-                )
+    Vk.cmdDrawIndexed renderStateCommandBuffer (3 * indexCount) 1 (3 * indexStart) 0 0
 
-            Vk.cmdBindIndexBuffer
-                renderStateCommandBuffer
-                (typedBufferObject rendererQuadIndices) 0 Vk.INDEX_TYPE_UINT32
+recordRenderStateColorCmd :: (MonadIO m) => Renderer -> RenderState -> Pattern -> Word32 -> m ()
+recordRenderStateColorCmd Renderer {..} RenderState {..} pattern patOffset = do
+    Vk.cmdBindDescriptorSets
+        renderStateCommandBuffer
+        Vk.PIPELINE_BIND_POINT_GRAPHICS
+        rendererPatternLayout
+        0
+        (V.singleton renderStateScreenDS)
+        V.empty
 
-            Vk.cmdBindVertexBuffers
-                renderStateCommandBuffer
-                0
-                (V.singleton $ typedBufferObject rendererQuadVertices)
-                (V.singleton 0)
+    Vk.cmdBindPipeline
+        renderStateCommandBuffer
+        Vk.PIPELINE_BIND_POINT_GRAPHICS
+        (case pattern of
+            PatternSolid _ -> rendererPatternSolid
+            PatternLinear {} -> rendererPatternLinear
+            PatternRadial {} -> rendererPatternRadial
+        )
 
-            Vk.cmdBindDescriptorSets
-                renderStateCommandBuffer
-                Vk.PIPELINE_BIND_POINT_GRAPHICS
-                rendererPatternLayout
-                1
-                (V.singleton renderStatePatternDS)
-                V.empty
+    Vk.cmdBindIndexBuffer
+        renderStateCommandBuffer
+        (typedBufferObject rendererQuadIndices) 0 Vk.INDEX_TYPE_UINT32
 
-            Vk.cmdDrawIndexed renderStateCommandBuffer 6 1 0 0 0
+    Vk.cmdBindVertexBuffers
+        renderStateCommandBuffer
+        0
+        (V.singleton $ typedBufferObject rendererQuadVertices)
+        (V.singleton 0)
+
+    Vk.cmdBindDescriptorSets
+        renderStateCommandBuffer
+        Vk.PIPELINE_BIND_POINT_GRAPHICS
+        rendererPatternLayout
+        1
+        (V.singleton renderStatePatternDS)
+        (V.singleton patOffset)
+
+    Vk.cmdDrawIndexed renderStateCommandBuffer 6 1 0 0 0
 
 renderRenderStateTarget :: (MonadIO m) => Renderer -> RenderState -> Graphics -> RenderTarget -> Maybe Vk.Semaphore -> m (m ())
 renderRenderStateTarget Renderer {..} RenderState {..} graphics RenderTarget {..} wait = do
@@ -403,6 +434,7 @@ renderRenderStateTargetSwapchain Renderer {..} RenderStateSwapchain {..} graphic
         (fromIntegral width) (fromIntegral height)
         (renderTargetBase ! index)
 
+
     Vk.resetFences environmentDevice (V.singleton renderStateFence)
 
     Vk.queueSubmit environmentGraphicsQueue
@@ -425,4 +457,22 @@ renderRenderStateTargetSwapchain Renderer {..} RenderStateSwapchain {..} graphic
     let waitOp = void $ Vk.waitForFences environmentDevice (V.singleton renderStateFence) True maxBound
 
     pure (index, waitOp)
+
+
+fanIndices :: [a] -> [V3 a]
+fanIndices (f: s: r) = zipWith (V3 f) (s : r) r
+fanIndices _ = []
+
+triangulateShape :: Word32 -> [Path] -> (Word32, [V2 Float], [V3 Word32])
+triangulateShape firstIndex paths = (last indexBreaks, vertices, indices)
+  where
+    pathVertices = pathToPoints <$> paths
+    vertices = join pathVertices
+
+    pathVertexCount = fromIntegral . length <$> pathVertices
+    indexBreaks = scanl (+) firstIndex pathVertexCount
+
+    pathIndexRange = zipWith (\a b -> [a .. pred b]) indexBreaks (tail indexBreaks)
+    pathIndices = fmap fanIndices pathIndexRange
+    indices = join pathIndices
 

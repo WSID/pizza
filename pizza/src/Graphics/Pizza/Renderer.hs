@@ -38,6 +38,9 @@ data Renderer = Renderer {
     -- Unowned reference
     rendererEnvironment :: Environment,
 
+    -- Vulkan Limits values needed for Renderer
+    rendererMinUniformBufferOffsetAlign :: Word64,
+
     -- Renderer Properties
     rendererImageFormat :: Vk.Format,
     rendererImageLayout :: Vk.ImageLayout,
@@ -82,6 +85,11 @@ newRenderer :: (MonadIO m) => Environment -> Vk.Format -> Vk.ImageLayout -> m Re
 newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
     let Environment {..} = rendererEnvironment
 
+    Vk.PhysicalDeviceProperties {
+        Vk.limits = Vk.PhysicalDeviceLimits {
+            minUniformBufferOffsetAlignment = rendererMinUniformBufferOffsetAlign
+        }
+    } <- Vk.getPhysicalDeviceProperties environmentPhysDevice
 
     rendererRenderPass <- Vk.createRenderPass
         environmentDevice
@@ -417,7 +425,7 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
         Vk.zero {
             Vk.bindings = V.singleton Vk.zero {
                 Vk.binding = 0,
-                Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
                 Vk.descriptorCount = 1,
                 Vk.stageFlags = Vk.SHADER_STAGE_FRAGMENT_BIT
             }
@@ -548,8 +556,10 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
         Vk.zero { -- Vk.DescriptorPoolCreateInfo
             Vk.flags = Vk.DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
             Vk.maxSets = 32,
-            Vk.poolSizes = V.singleton $
-                Vk.DescriptorPoolSize Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER 32
+            Vk.poolSizes = V.fromList [
+                    Vk.DescriptorPoolSize Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER 32,
+                    Vk.DescriptorPoolSize Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC 32
+                ]
         }
         Nothing
 
@@ -603,3 +613,4 @@ freeRenderer Renderer {..} = do
     Vk.destroyRenderPass environmentDevice rendererRenderPass Nothing
     Vk.destroyCommandPool environmentDevice rendererCommandPool Nothing
     Vk.destroyDescriptorPool environmentDevice rendererDescriptorPool Nothing
+

@@ -3,6 +3,8 @@ module Graphics.Pizza.Graphic (
     module Graphics.Pizza.Graphic.Dash,
     module Graphics.Pizza.Graphic.Path,
     module Graphics.Pizza.Graphic.Stroke,
+
+    DrawItem ( .. ),
     Graphics ( .. ),
     Pattern ( .. ),
 
@@ -17,7 +19,9 @@ import Graphics.Pizza.Graphic.Dash
 import Graphics.Pizza.Graphic.Stroke
 import Graphics.Pizza.Graphic.Path
 
-data Graphics = Graphics [Path] Pattern
+data DrawItem = DrawShape [Path] Pattern
+
+newtype Graphics = Graphics [DrawItem]
 
 data Pattern =
     PatternSolid (V4 Float) |

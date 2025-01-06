@@ -214,14 +214,11 @@ createSwapchain Pz.Environment {..} SurfaceState {..} width height = do
     Vk.createSwapchainKHR environmentDevice swapchainCreateInfo Nothing
 
 makeGraphic :: Float -> Pz.Graphics
-makeGraphic time = Pz.Graphics
-    (paths <> strokes <> dashedPaths)
-    (Pz.PatternRadial
-        (V2 (200 + 400 * cos theta) (400 + 400 * sin theta))
-        400
-        (V4 1 1 0 1)
-        (V4 0 1 1 1)
-    )
+makeGraphic time = Pz.Graphics [
+        Pz.DrawShape paths pattern1,
+        Pz.DrawShape strokes pattern2,
+        Pz.DrawShape dashedPaths pattern3
+    ]
   where
     theta = time * 2
     animValue1 = 400 * cos theta
@@ -279,6 +276,19 @@ makeGraphic time = Pz.Graphics
             ]
         )
 
+    pattern1 = Pz.PatternRadial
+        (V2 (200 + 400 * cos theta) (400 + 400 * sin theta))
+        400
+        (V4 1 1 0 1)
+        (V4 0 1 1 1)
+
+    pattern2 = Pz.PatternLinear
+        (V2 (200 - 200 * cos theta) (200 + 200 * sin theta))
+        (V2 (200 + 200 * cos theta) (200 - 200 * sin theta))
+        (V4 0 1 0 1)
+        (V4 1 0 1 1)
+
+    pattern3 = Pz.PatternSolid (V4 1 1 1 1)
 
 
 main :: IO ()
