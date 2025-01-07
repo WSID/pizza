@@ -9,8 +9,6 @@ import Control.Monad.IO.Class
 
 import Data.Bits
 import Data.Foldable
-import Data.Traversable
-import Data.List (zip4)
 import Data.Word
 
 import Foreign.Storable
@@ -207,95 +205,102 @@ freeRenderStateSwapchain Renderer {..} RenderStateSwapchain {..} = do
 setRenderStateTargetBase :: (MonadIO m) => Renderer -> RenderState -> Graphics -> Int -> Int -> BaseRenderTarget -> m ()
 setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height BaseRenderTarget {..} = do
     let renderArea = Vk.Rect2D {
-        Vk.offset = Vk.Offset2D 0 0,
-        Vk.extent = Vk.Extent2D (fromIntegral width) (fromIntegral height)
-    }
+            Vk.offset = Vk.Offset2D 0 0,
+            Vk.extent = Vk.Extent2D (fromIntegral width) (fromIntegral height)
+        }
 
-    -- Vertex
+        patOffset = fromIntegral rendererMinUniformBufferOffsetAlign
 
-    let Graphics drawItems = graphics
+        Graphics drawItems = graphics
 
-    let drawItemToLower firstIndex (DrawShape paths pattern) =
-            let (lastIndex, v, i) = triangulateShape firstIndex paths
-            in (lastIndex, (v, i, pattern))
-
-    let (_totalCount, lowDrawItems) = mapAccumL drawItemToLower 0 drawItems
-
-    let allVertices = foldMap (\(v, _, _) -> v) lowDrawItems
-
-    let patOffset = fromIntegral rendererMinUniformBufferOffsetAlign
-    let patterns = fmap (\(_, _, p) -> p) lowDrawItems
-
-    let indicesCount = fmap (\(_, i, _) -> fromIntegral $ length i) lowDrawItems
-    let indicesBreaks = scanl (+) 0 indicesCount
-    let indicesGroups = zip4 indicesBreaks indicesCount patterns [0, patOffset .. ]
-    let allIndices = foldMap (\(_, i, _) -> i) lowDrawItems
+    writeTypedBuffer1 rendererEnvironment renderStateScreenUniform (fromIntegral <$> V2 width height)
 
     vptr <- mapTypedBuffer rendererEnvironment renderStateVertex
-    liftIO $ pokeArray vptr allVertices
-    unmapTypedBuffer rendererEnvironment renderStateVertex
-
     iptr <- mapTypedBuffer rendererEnvironment renderStateIndex
-    liftIO $ pokeArray iptr allIndices
-    unmapTypedBuffer rendererEnvironment renderStateIndex
-
-    writeTypedBuffer1 rendererEnvironment  renderStateScreenUniform (fromIntegral <$> V2 width height)
-
-    ptr <- mapTypedBuffer rendererEnvironment renderStatePatternUniform
-    liftIO $ for_ indicesGroups $ \(_, _, pattern, offset) -> case pattern of
-        PatternSolid color -> pokeByteOff ptr offset color
-        PatternLinear ps pe cs ce -> pokeByteOff ptr offset (PreparationLinear ps pe cs ce)
-        PatternRadial ps r cs ce -> pokeByteOff ptr offset (PreparationRadial ps r cs ce)
-    unmapTypedBuffer rendererEnvironment renderStatePatternUniform
+    uptr <- mapTypedBuffer rendererEnvironment renderStatePatternUniform
 
     Vk.resetCommandBuffer renderStateCommandBuffer zeroBits
-    Vk.useCommandBuffer
+
+    let appendPath :: (Int, Int) -> Path -> IO (Int, Int)
+        appendPath (pathVi, pathIi) path = do
+            let pathVertices = pathToPoints path
+                pathVcount = length pathVertices
+                pathViend = pathVi + pathVcount
+
+                pathVirange = [fromIntegral pathVi .. fromIntegral (pred pathViend)]
+                pathIndices = fanIndices pathVirange
+
+            pokeArray (advancePtr vptr pathVi) pathVertices
+            pokeArray (advancePtr iptr pathIi) pathIndices
+            pure (pathViend, pathIi + pathVcount - 2)
+
+    let appendDrawItem :: (Int, Int, Int) -> DrawItem -> IO (Int, Int, Int)
+        appendDrawItem (vi, ii, uoff) (DrawShape paths pattern) = do
+            (nvi, nii) <- foldlM appendPath (vi, ii) paths
+
+            recordRenderStateStencilCmd
+                Renderer {..}
+                RenderState {..}
+                renderArea
+                (fromIntegral ii)
+                (fromIntegral (nii - ii))
+
+            case pattern of
+                PatternSolid color -> pokeByteOff uptr uoff color
+                PatternLinear ps pe cs ce -> pokeByteOff uptr uoff (PreparationLinear ps pe cs ce)
+                PatternRadial ps r cs ce -> pokeByteOff uptr uoff (PreparationRadial ps r cs ce)
+
+            recordRenderStateColorCmd
+                Renderer {..}
+                RenderState {..}
+                pattern
+                (fromIntegral uoff)
+
+            pure (nvi, nii, uoff + patOffset)
+
+    Vk.beginCommandBuffer
         renderStateCommandBuffer
         Vk.CommandBufferBeginInfo {
             Vk.next = (),
             Vk.flags = Vk.COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
             Vk.inheritanceInfo = Nothing
         }
-        $ do
-        Vk.cmdSetViewport renderStateCommandBuffer 0 $ V.singleton Vk.Viewport {
-            Vk.x = 0,
-            Vk.y = 0,
-            Vk.width = fromIntegral width,
-            Vk.height = fromIntegral height,
-            Vk.minDepth = 0,
-            Vk.maxDepth = 1
+
+    Vk.cmdSetViewport renderStateCommandBuffer 0 $ V.singleton Vk.Viewport {
+        Vk.x = 0,
+        Vk.y = 0,
+        Vk.width = fromIntegral width,
+        Vk.height = fromIntegral height,
+        Vk.minDepth = 0,
+        Vk.maxDepth = 1
+    }
+
+    Vk.cmdSetScissor renderStateCommandBuffer 0 $ V.singleton renderArea
+
+    Vk.cmdBeginRenderPass
+        renderStateCommandBuffer
+        Vk.zero {
+            Vk.renderPass = rendererRenderPass,
+            Vk.framebuffer = renderTargetFramebuffer,
+            Vk.renderArea = renderArea,
+            Vk.clearValues = V.fromList [
+                    Vk.Color (Vk.Float32 0 0 0 1),
+                    Vk.DepthStencil (Vk.ClearDepthStencilValue 0 0)
+                ]
         }
+        Vk.SUBPASS_CONTENTS_INLINE
 
-        Vk.cmdSetScissor renderStateCommandBuffer 0 $ V.singleton renderArea
+    -- This might be useful performance data.
+    -- (Represents vertices count and triangle counts)
+    _ <- liftIO $ foldlM appendDrawItem (0, 0, 0) drawItems
 
-        Vk.cmdUseRenderPass
-            renderStateCommandBuffer
-            Vk.zero {
-                Vk.renderPass = rendererRenderPass,
-                Vk.framebuffer = renderTargetFramebuffer,
-                Vk.renderArea = renderArea,
-                Vk.clearValues = V.fromList [
-                        Vk.Color (Vk.Float32 0 0 0 1),
-                        Vk.DepthStencil (Vk.ClearDepthStencilValue 0 0)
-                    ]
-            }
-            Vk.SUBPASS_CONTENTS_INLINE
-            $ do
+    Vk.cmdEndRenderPass renderStateCommandBuffer
 
-            -- For each indices ranges and patterns
-            for_ indicesGroups $ \(indexStart, indexCount, pattern, offset) -> do
-                recordRenderStateStencilCmd
-                    Renderer {..}
-                    RenderState {..}
-                    renderArea
-                    indexStart
-                    indexCount
+    Vk.endCommandBuffer renderStateCommandBuffer
 
-                recordRenderStateColorCmd
-                    Renderer {..}
-                    RenderState {..}
-                    pattern
-                    (fromIntegral offset)
+    unmapTypedBuffer rendererEnvironment renderStatePatternUniform
+    unmapTypedBuffer rendererEnvironment renderStateIndex
+    unmapTypedBuffer rendererEnvironment renderStateVertex
 
 recordRenderStateStencilCmd :: (MonadIO m) => Renderer -> RenderState -> Vk.Rect2D -> Word32 -> Word32 -> m ()
 recordRenderStateStencilCmd Renderer {..} RenderState {..} renderArea indexStart indexCount = do
@@ -462,17 +467,4 @@ renderRenderStateTargetSwapchain Renderer {..} RenderStateSwapchain {..} graphic
 fanIndices :: [a] -> [V3 a]
 fanIndices (f: s: r) = zipWith (V3 f) (s : r) r
 fanIndices _ = []
-
-triangulateShape :: Word32 -> [Path] -> (Word32, [V2 Float], [V3 Word32])
-triangulateShape firstIndex paths = (last indexBreaks, vertices, indices)
-  where
-    pathVertices = pathToPoints <$> paths
-    vertices = join pathVertices
-
-    pathVertexCount = fromIntegral . length <$> pathVertices
-    indexBreaks = scanl (+) firstIndex pathVertexCount
-
-    pathIndexRange = zipWith (\a b -> [a .. pred b]) indexBreaks (tail indexBreaks)
-    pathIndices = fmap fanIndices pathIndexRange
-    indices = join pathIndices
 
