@@ -41,3 +41,10 @@ lineIntersect ap ad bp bd
   where
     dirMat = V2 ad bd
     V2 x _ = (bp - ap) *! inv22 (V2 ad bd)
+
+
+rotMat :: Float -> M22 Float
+rotMat a = V2 (V2 c (-s)) (V2 s c)
+  where
+    s = sin a
+    c = cos a

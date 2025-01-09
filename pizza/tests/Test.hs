@@ -53,6 +53,20 @@ main = do
                         lineIntersect (V2 0 0) (V2 1 0) (V2 0 0) (V2 0 1) ~?= Just (V2 0 0),
                     "1" ~: do
                         lineIntersect (V2 0 0) (V2 2 1) (V2 (-2) 3) (V2 2 (-1)) ~?= Just (V2 2 1)
+                ],
+                "Rotataion Matrix" ~: TestList [
+                    "Simple 180" ~: do
+                        let V2 x y = rotMat pi !* V2 0 1
+                        assertBool "X is near 0" (abs (x - 0) < 0.0001)
+                        assertBool "Y is near -1" (abs (y - (-1)) < 0.0001),
+                    "Simple 90" ~: do
+                        let V2 x y = rotMat pi05 !* V2 1 0
+                        assertBool "X is near 0" (abs (x - 0) < 0.0001)
+                        assertBool "Y is near 1" (abs (y - 1) < 0.0001),
+                    "Simple 360" ~: do
+                        let V2 x y = rotMat pi2 !* V2 1 1
+                        assertBool "X is near 1" (abs (x - 1) < 0.0001)
+                        assertBool "Y is near 1" (abs (y - 1) < 0.0001)
                 ]
             ],
             "Graphics" ~: TestList [
