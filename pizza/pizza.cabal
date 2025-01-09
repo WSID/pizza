@@ -67,6 +67,7 @@ library
         Graphics.Pizza.Graphic.Dash,
         Graphics.Pizza.Graphic.Path,
         Graphics.Pizza.Graphic.Stroke,
+        Graphics.Pizza.Graphic.Transform,
         Graphics.Pizza.Renderer,
         Graphics.Pizza.RenderState,
         Graphics.Pizza.RenderTarget,

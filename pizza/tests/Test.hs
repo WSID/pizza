@@ -8,7 +8,7 @@ module Main where
 import Test.HUnit
 
 -- linear
-import Linear
+import Linear hiding (rotate)
 
 -- pizza
 import Graphics.Pizza
@@ -119,6 +119,29 @@ main = do
                         "1" ~: dashPatternCons (DashPattern True [10, 20]) ~?= (True, Just (10, DashPattern False [20])),
                         "2" ~: dashPatternCons (DashPattern False [10, 20, 30]) ~?= (False, Just (10, DashPattern True [20, 30]))
                     ]
+                ],
+                "Transform" ~: TestList [
+                    "Identity" ~: runTransform mempty (V2 2 3) ~?= V2 2 3,
+                    "Translate" ~: do
+                        let t = translate (V2 1 5) mempty
+                        runTransform t (V2 1 1) ~?= V2 2 6,
+
+                    "Rotate" ~: do
+                        let t = rotate 1 $ translate (V2 1 2) mempty
+                            V2 ax ay = runTransform t (V2 1 3)
+                            V2 bx by = rotMat 1 !* V2 2 5
+                        assertBool "Compare X" (abs (ax - bx) < 0.001)
+                        assertBool "Compare Y" (abs (ay - by) < 0.001),
+
+                    "Scale" ~: do
+                        let t = scale (V2 0.5 0.25) $ translate (V2 2 8) mempty
+                        runTransform t (V2 8 4) ~?= V2 5 3,
+
+                    "FromPose" ~: do
+                        let t = fromPose (V2 2 2) pi05 (V2 2 2)
+                            V2 x y = runTransform t (V2 (-1) 1)
+                        assertBool "x ~= 0" (abs (x - 0) < 0.001)
+                        assertBool "y ~= 0" (abs (y - 0) < 0.001)
                 ]
             ],
             testTreeRendering
