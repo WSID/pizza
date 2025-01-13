@@ -3,12 +3,38 @@ module Graphics.Pizza.Graphic.Curve where
 import Linear
 
 import Graphics.Pizza.Internal.Util
+import Graphics.Pizza.Internal.Geometry
+
+import Graphics.Pizza.Graphic.Transform
 
 -- | A curve on spatial.
 data Curve = Curve {
     curvePosition :: Float -> V2 Float,
     curveDirection :: Float -> V2 Float
 }
+
+instance Transformable Curve where
+    transform trans c = Curve {
+        curvePosition = \t -> runTransform trans $ curvePosition c t,
+        curveDirection = \t -> transMatrix trans !* curveDirection c t
+    }
+
+    translate trs c = Curve {
+        curvePosition = \t -> curvePosition c t + trs,
+        curveDirection = curveDirection c
+    }
+
+    rotate r c = Curve {
+        curvePosition = \t -> rm !* curvePosition c t,
+        curveDirection = \t -> rm !* curveDirection c t
+    }
+      where
+        rm = rotMat r
+
+    scale scl c = Curve {
+        curvePosition = \t -> scl * curvePosition c t,
+        curveDirection = curveDirection c
+    }
 
 reverse :: Curve -> Curve
 reverse curve = Curve {

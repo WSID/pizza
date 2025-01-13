@@ -45,12 +45,15 @@ data Renderer = Renderer {
     rendererImageFormat :: Vk.Format,
     rendererImageLayout :: Vk.ImageLayout,
 
+    -- Descriptor Set Layout
+    rendererScreenDSLayout :: Vk.DescriptorSetLayout,
+    rendererPatternDSLayout :: Vk.DescriptorSetLayout,
+
     -- Render Pass
     rendererRenderPass :: Vk.RenderPass,
 
     -- Stencil Vertex Handling
     rendererShaderVert :: Vk.ShaderModule,
-    rendererScreenDSLayout :: Vk.DescriptorSetLayout,
 
     -- Stencil Pipeline
     rendererStencilPipelineLayout :: Vk.PipelineLayout,
@@ -58,7 +61,6 @@ data Renderer = Renderer {
 
     -- Pattern pipeline common
     rendererPatternShaderVert :: Vk.ShaderModule,
-    rendererPatternDSLayout :: Vk.DescriptorSetLayout,
     rendererPatternLayout :: Vk.PipelineLayout,
 
     -- Pattern Solid
@@ -90,6 +92,38 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
             minUniformBufferOffsetAlignment = rendererMinUniformBufferOffsetAlign
         }
     } <- Vk.getPhysicalDeviceProperties environmentPhysDevice
+
+    rendererScreenDSLayout <- Vk.createDescriptorSetLayout
+        environmentDevice
+        Vk.zero {
+            Vk.bindings = V.singleton Vk.zero {
+                Vk.binding = 0,
+                Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                Vk.descriptorCount = 1,
+                Vk.stageFlags = Vk.SHADER_STAGE_VERTEX_BIT .|. Vk.SHADER_STAGE_FRAGMENT_BIT
+            }
+        }
+        Nothing
+
+    rendererPatternDSLayout <- Vk.createDescriptorSetLayout
+        environmentDevice
+        Vk.zero {
+            Vk.bindings = V.fromList [
+                Vk.zero {
+                    Vk.binding = 0,
+                    Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+                    Vk.descriptorCount = 1,
+                    Vk.stageFlags = Vk.SHADER_STAGE_FRAGMENT_BIT
+                },
+                Vk.zero {
+                    Vk.binding = 1,
+                    Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+                    Vk.descriptorCount = 1,
+                    Vk.stageFlags = Vk.SHADER_STAGE_VERTEX_BIT .|. Vk.SHADER_STAGE_FRAGMENT_BIT
+                }
+            ]
+        }
+        Nothing
 
     rendererRenderPass <- Vk.createRenderPass
         environmentDevice
@@ -160,16 +194,11 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
                 layout (location = 0)
                 in vec2 pos;
 
-                layout (location = 0)
-                out vec2 fragPos;
-
                 layout (set = 0, binding = 0) uniform Screen {
                     vec2 size;
                 };
 
                 void main () {
-                    fragPos = pos;
-
                     // Map (0, 0) ~ screenSize, to (-1, -1) ~ (+1, +1)
                     vec2 normPos = (pos / size * 2) - 1;
 
@@ -178,19 +207,6 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
             |]
         }
         Nothing
-
-    rendererScreenDSLayout <- Vk.createDescriptorSetLayout
-        environmentDevice
-        Vk.zero {
-            Vk.bindings = V.singleton Vk.zero {
-                Vk.binding = 0,
-                Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                Vk.descriptorCount = 1,
-                Vk.stageFlags = Vk.SHADER_STAGE_VERTEX_BIT
-            }
-        }
-        Nothing
-
 
     rendererStencilPipelineLayout <- Vk.createPipelineLayout
         environmentDevice
@@ -316,11 +332,16 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
                     vec2 size;
                 };
 
+                layout (set = 1, binding = 1) uniform Transform {
+                    mat2 transMatrix;
+                    vec2 transTrans;
+                };
+
                 void main () {
                     gl_Position = vec4 (pos, 0, 1);
 
                     // Map (-1, -1) ~ (+1, +1), to (0, 0) ~ screenSize
-                    fragPos = (pos + 1) * 0.5f * size;
+                    fragPos = inverse(transMatrix) * (((pos + 1) * 0.5f * size) - transTrans);
                 }
             |]
         }
@@ -419,18 +440,6 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
             Vk.renderPass = rendererRenderPass,
             Vk.subpass = 0
         }
-
-    rendererPatternDSLayout <- Vk.createDescriptorSetLayout
-        environmentDevice
-        Vk.zero {
-            Vk.bindings = V.singleton Vk.zero {
-                Vk.binding = 0,
-                Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
-                Vk.descriptorCount = 1,
-                Vk.stageFlags = Vk.SHADER_STAGE_FRAGMENT_BIT
-            }
-        }
-        Nothing
 
     rendererPatternLayout <- Vk.createPipelineLayout
         environmentDevice
@@ -604,13 +613,14 @@ freeRenderer Renderer {..} = do
     Vk.destroyPipeline environmentDevice rendererPatternSolid Nothing
     Vk.destroyShaderModule environmentDevice rendererPatternSolidShaderFrag Nothing
     Vk.destroyPipelineLayout environmentDevice rendererPatternLayout Nothing
-    Vk.destroyDescriptorSetLayout environmentDevice rendererPatternDSLayout Nothing
     Vk.destroyShaderModule environmentDevice rendererPatternShaderVert Nothing
     Vk.destroyPipeline environmentDevice rendererStencilPipeline Nothing
     Vk.destroyPipelineLayout environmentDevice rendererStencilPipelineLayout Nothing
-    Vk.destroyDescriptorSetLayout environmentDevice rendererScreenDSLayout Nothing
     Vk.destroyShaderModule environmentDevice rendererShaderVert Nothing
     Vk.destroyRenderPass environmentDevice rendererRenderPass Nothing
+    Vk.destroyDescriptorSetLayout environmentDevice rendererPatternDSLayout Nothing
+    Vk.destroyDescriptorSetLayout environmentDevice rendererScreenDSLayout Nothing
     Vk.destroyCommandPool environmentDevice rendererCommandPool Nothing
     Vk.destroyDescriptorPool environmentDevice rendererDescriptorPool Nothing
+
 

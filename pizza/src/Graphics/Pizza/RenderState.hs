@@ -93,6 +93,7 @@ data RenderState = RenderState {
     renderStateScreenUniform :: TypedBuffer (V2 Float),
     renderStatePatternDS :: Vk.DescriptorSet,
     renderStatePatternUniform :: TypedBuffer (),
+    renderStateTransformUniform :: TypedBuffer (), -- for Transform
     renderStateSemaphore :: Vk.Semaphore,
     renderStateFence :: Vk.Fence
 }
@@ -135,6 +136,7 @@ newRenderState Renderer {..} = do
 
     renderStateScreenUniform <- newTypedBufferN rendererEnvironment Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 1
     renderStatePatternUniform <- newTypedBufferSized rendererEnvironment Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 1024
+    renderStateTransformUniform <- newTypedBufferSized rendererEnvironment Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 1024
     renderStateSemaphore <- Vk.createSemaphore environmentDevice Vk.zero Nothing
     renderStateFence <- Vk.createFence environmentDevice Vk.zero Nothing
 
@@ -167,6 +169,19 @@ newRenderState Renderer {..} = do
                     Vk.offset = 0,
                     Vk.range = 64
                 }
+            },
+            Vk.SomeStruct Vk.zero {
+                Vk.next = (),
+                Vk.dstSet = renderStatePatternDS,
+                Vk.dstBinding = 1,
+                Vk.dstArrayElement = 0,
+                Vk.descriptorCount = 1,
+                Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+                Vk.bufferInfo = V.singleton Vk.DescriptorBufferInfo {
+                    Vk.buffer = typedBufferObject renderStateTransformUniform,
+                    Vk.offset = 0,
+                    Vk.range = 64
+                }
             }
         ])
         -- copies
@@ -181,6 +196,7 @@ freeRenderState Renderer {..} RenderState {..} = do
     Vk.destroySemaphore environmentDevice renderStateSemaphore Nothing
     freeTypedBuffer rendererEnvironment renderStateScreenUniform
     freeTypedBuffer rendererEnvironment renderStatePatternUniform
+    freeTypedBuffer rendererEnvironment renderStateTransformUniform
     Vk.freeDescriptorSets environmentDevice rendererDescriptorPool (V.fromList [renderStateScreenDS, renderStatePatternDS])
     freeTypedBuffer rendererEnvironment renderStateIndex
     freeTypedBuffer rendererEnvironment renderStateVertex
@@ -218,6 +234,7 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
     vptr <- mapTypedBuffer rendererEnvironment renderStateVertex
     iptr <- mapTypedBuffer rendererEnvironment renderStateIndex
     uptr <- mapTypedBuffer rendererEnvironment renderStatePatternUniform
+    tptr <- mapTypedBuffer rendererEnvironment renderStateTransformUniform
 
     Vk.resetCommandBuffer renderStateCommandBuffer zeroBits
 
@@ -235,8 +252,8 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
             pure (pathViend, pathIi + pathVcount - 2)
 
     let appendDrawItem :: (Int, Int, Int) -> DrawItem -> IO (Int, Int, Int)
-        appendDrawItem (vi, ii, uoff) (DrawShape paths pattern) = do
-            (nvi, nii) <- foldlM appendPath (vi, ii) paths
+        appendDrawItem (vi, ii, uoff) (DrawShape paths pattern trans) = do
+            (nvi, nii) <- foldlM appendPath (vi, ii) (transform trans <$> paths)
 
             recordRenderStateStencilCmd
                 Renderer {..}
@@ -249,6 +266,12 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
                 PatternSolid color -> pokeByteOff uptr uoff color
                 PatternLinear ps pe cs ce -> pokeByteOff uptr uoff (PreparationLinear ps pe cs ce)
                 PatternRadial ps r cs ce -> pokeByteOff uptr uoff (PreparationRadial ps r cs ce)
+
+            let Transform (V2 transMx transMy) transT = trans
+
+            pokeByteOff tptr uoff transMx
+            pokeByteOff tptr (uoff + 16) transMy
+            pokeByteOff tptr (uoff + 32) transT
 
             recordRenderStateColorCmd
                 Renderer {..}
@@ -298,6 +321,7 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
 
     Vk.endCommandBuffer renderStateCommandBuffer
 
+    unmapTypedBuffer rendererEnvironment renderStateTransformUniform
     unmapTypedBuffer rendererEnvironment renderStatePatternUniform
     unmapTypedBuffer rendererEnvironment renderStateIndex
     unmapTypedBuffer rendererEnvironment renderStateVertex
@@ -377,7 +401,7 @@ recordRenderStateColorCmd Renderer {..} RenderState {..} pattern patOffset = do
         rendererPatternLayout
         1
         (V.singleton renderStatePatternDS)
-        (V.singleton patOffset)
+        (V.fromList [patOffset, patOffset])
 
     Vk.cmdDrawIndexed renderStateCommandBuffer 6 1 0 0 0
 
@@ -467,4 +491,6 @@ renderRenderStateTargetSwapchain Renderer {..} RenderStateSwapchain {..} graphic
 fanIndices :: [a] -> [V3 a]
 fanIndices (f: s: r) = zipWith (V3 f) (s : r) r
 fanIndices _ = []
+
+
 

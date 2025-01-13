@@ -3,13 +3,30 @@
 
 module Graphics.Pizza.Graphic.Path where
 
+import Graphics.Pizza.Internal.Geometry
 import Graphics.Pizza.Graphic.Curve as Curve
+import Graphics.Pizza.Graphic.Transform
 
-import Linear
+import Linear hiding (rotate)
 
 data PathPart
     = PathPoint (V2 Float)
     | PathCurve Curve
+
+instance Transformable PathPart where
+  transform t (PathPoint p) = PathPoint (runTransform t p)
+  transform t (PathCurve c) = PathCurve (transform t c)
+
+  translate t (PathPoint p) = PathPoint (t + p)
+  translate t (PathCurve c) = PathCurve (translate t c)
+
+  rotate r (PathPoint p) = PathPoint (rm !* p)
+    where
+      rm = rotMat r
+  rotate r (PathCurve c) = PathCurve (rotate r c)
+
+  scale s (PathPoint p) = PathPoint (s * p)
+  scale s (PathCurve c) = PathCurve (scale s c)
 
 pathPartStart :: PathPart -> V2 Float
 pathPartStart (PathPoint p) = p
@@ -20,6 +37,12 @@ pathPartEnd (PathPoint p) = p
 pathPartEnd (PathCurve (Curve pos _)) = pos 1
 
 newtype Path = Path [PathPart] deriving (Semigroup, Monoid)
+
+instance Transformable Path where
+  transform t (Path ps) = Path (transform t <$> ps)
+  translate t (Path ps) = Path (translate t <$> ps)
+  rotate r (Path ps) = Path (rotate r <$> ps)
+  scale s (Path ps) = Path (scale s <$> ps)
 
 -- Splits
 

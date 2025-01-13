@@ -400,14 +400,14 @@ checkImages a b = do
 
 testPatterns :: Pattern -> Assertion
 testPatterns pattern = do
-    let graphics = Graphics [ DrawShape [pathFull] pattern]
+    let graphics = Graphics [ DrawShape [pathFull] pattern mempty]
     actual <- makeRenderedImage graphics
     let expected = makeExpectedImage pattern
     assert $ checkImages actual expected
 
 testPath :: [Graphics.Pizza.Path] -> [Bool] -> Assertion
 testPath paths mask = do
-    let graphics = Graphics [ DrawShape paths (PatternSolid (V4 1 1 1 1)) ]
+    let graphics = Graphics [ DrawShape paths (PatternSolid (V4 1 1 1 1)) mempty]
     actual <- makeRenderedImage graphics
     let expected = bool (V4 0 0 0 255) (V4 255 255 255 255) <$> mask
     assert $ checkImages actual expected

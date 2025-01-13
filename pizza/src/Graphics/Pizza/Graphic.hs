@@ -3,6 +3,7 @@ module Graphics.Pizza.Graphic (
     module Graphics.Pizza.Graphic.Dash,
     module Graphics.Pizza.Graphic.Path,
     module Graphics.Pizza.Graphic.Stroke,
+    module Graphics.Pizza.Graphic.Transform,
 
     DrawItem ( .. ),
     Graphics ( .. ),
@@ -18,10 +19,17 @@ import Graphics.Pizza.Graphic.Curve
 import Graphics.Pizza.Graphic.Dash
 import Graphics.Pizza.Graphic.Stroke
 import Graphics.Pizza.Graphic.Path
+import Graphics.Pizza.Graphic.Transform
 
-data DrawItem = DrawShape [Path] Pattern
+data DrawItem = DrawShape [Path] Pattern Transform
+
+instance Transformable DrawItem where
+    transform tr (DrawShape paths pat trs) = DrawShape paths pat (transform tr trs)
 
 newtype Graphics = Graphics [DrawItem]
+
+instance Transformable Graphics where
+    transform tr (Graphics items) = Graphics (fmap (transform tr) items)
 
 data Pattern =
     PatternSolid (V4 Float) |

@@ -215,9 +215,9 @@ createSwapchain Pz.Environment {..} SurfaceState {..} width height = do
 
 makeGraphic :: Float -> Pz.Graphics
 makeGraphic time = Pz.Graphics [
-        Pz.DrawShape paths pattern1,
-        Pz.DrawShape strokes pattern2,
-        Pz.DrawShape dashedPaths pattern3
+        Pz.DrawShape paths pattern1 (Pz.fromPose (V2 (-200) 100) 0 (V2 1 1)),
+        Pz.DrawShape strokes pattern2 (Pz.fromScale (V2 0.5 0.5)),
+        Pz.DrawShape dashedPaths pattern3 mempty
     ]
   where
     theta = time * 2
@@ -364,10 +364,4 @@ main = do
     Pz.freeEnvironment environment
 
     GLFW.terminate
-
-
-
-
-
-
 
