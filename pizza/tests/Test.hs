@@ -16,6 +16,8 @@ import Graphics.Pizza.Internal.Util
 import Graphics.Pizza.Internal.Geometry
 
 -- test internal
+import Test.Extra
+
 import TestRendering
 
 main :: IO ()
@@ -57,16 +59,16 @@ main = do
                 "Rotataion Matrix" ~: TestList [
                     "Simple 180" ~: do
                         let V2 x y = rotMat pi !* V2 0 1
-                        assertBool "X is near 0" (abs (x - 0) < 0.0001)
-                        assertBool "Y is near -1" (abs (y - (-1)) < 0.0001),
+                        x ~~@= 0
+                        y ~~@= (-1),
                     "Simple 90" ~: do
                         let V2 x y = rotMat pi05 !* V2 1 0
-                        assertBool "X is near 0" (abs (x - 0) < 0.0001)
-                        assertBool "Y is near 1" (abs (y - 1) < 0.0001),
+                        x ~~@= 0
+                        y ~~@= 1,
                     "Simple 360" ~: do
                         let V2 x y = rotMat pi2 !* V2 1 1
-                        assertBool "X is near 1" (abs (x - 1) < 0.0001)
-                        assertBool "Y is near 1" (abs (y - 1) < 0.0001)
+                        x ~~@= 1
+                        y ~~@= 1
                 ]
             ],
             "Graphics" ~: TestList [
@@ -97,8 +99,8 @@ main = do
                             CurveDone leftover -> assertFailure ("Running from 20 to 40: Curve Done - " <> show leftover)
                             CurveRunning t _ -> pure t
 
-                        assertBool "t1 ~= 0.1" (abs (t1 - 0.1) < 0.001)
-                        assertBool "t2 ~= 0.3" (abs (t2 - 0.3) < 0.001)
+                        t1 ~~@= 0.1
+                        t2 ~~@= 0.3
                 ],
                 "DashPattern" ~: TestList [
                     "start on" ~: TestList [
@@ -130,8 +132,9 @@ main = do
                         let t = rotate 1 $ translate (V2 1 2) mempty
                             V2 ax ay = runTransform t (V2 1 3)
                             V2 bx by = rotMat 1 !* V2 2 5
-                        assertBool "Compare X" (abs (ax - bx) < 0.001)
-                        assertBool "Compare Y" (abs (ay - by) < 0.001),
+
+                        ax ~~@= bx
+                        ay ~~@= by,
 
                     "Scale" ~: do
                         let t = scale (V2 0.5 0.25) $ translate (V2 2 8) mempty
@@ -140,8 +143,8 @@ main = do
                     "FromPose" ~: do
                         let t = fromPose (V2 2 2) pi05 (V2 2 2)
                             V2 x y = runTransform t (V2 (-1) 1)
-                        assertBool "x ~= 0" (abs (x - 0) < 0.001)
-                        assertBool "y ~= 0" (abs (y - 0) < 0.001)
+                        x ~~@= 0
+                        y ~~@= 0
                 ]
             ],
             testTreeRendering
