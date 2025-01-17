@@ -49,29 +49,27 @@ data Renderer = Renderer {
     rendererScreenDSLayout :: Vk.DescriptorSetLayout,
     rendererPatternDSLayout :: Vk.DescriptorSetLayout,
 
+    -- Pipeline Layouts
+    rendererStencilPipelineLayout :: Vk.PipelineLayout,
+    rendererPatternLayout :: Vk.PipelineLayout,
+
     -- Render Pass
     rendererRenderPass :: Vk.RenderPass,
 
-    -- Stencil Vertex Handling
-    rendererShaderVert :: Vk.ShaderModule,
-
     -- Stencil Pipeline
-    rendererStencilPipelineLayout :: Vk.PipelineLayout,
+    rendererShaderVert :: Vk.ShaderModule,
     rendererStencilPipeline :: Vk.Pipeline,
 
-    -- Pattern pipeline common
+    -- Pattern Pipeline Shaders
     rendererPatternShaderVert :: Vk.ShaderModule,
-    rendererPatternLayout :: Vk.PipelineLayout,
+
+    rendererPatternSolidShaderFrag :: Vk.ShaderModule,
+    rendererPatternLinearShaderFrag :: Vk.ShaderModule,
+    rendererPatternRadialShaderFrag :: Vk.ShaderModule,
 
     -- Pattern Solid
-    rendererPatternSolidShaderFrag :: Vk.ShaderModule,
     rendererPatternSolid :: Vk.Pipeline,
-
-    -- Pattern Linear
-    rendererPatternLinearShaderFrag :: Vk.ShaderModule,
     rendererPatternLinear :: Vk.Pipeline,
-
-    rendererPatternRadialShaderFrag :: Vk.ShaderModule,
     rendererPatternRadial :: Vk.Pipeline,
 
     -- Pools
@@ -92,6 +90,8 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
             minUniformBufferOffsetAlignment = rendererMinUniformBufferOffsetAlign
         }
     } <- Vk.getPhysicalDeviceProperties environmentPhysDevice
+
+    -- Layouts : Descriptor Set Layouts
 
     rendererScreenDSLayout <- Vk.createDescriptorSetLayout
         environmentDevice
@@ -124,6 +124,31 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
             ]
         }
         Nothing
+
+    -- Layouts : Pipeline Layouts
+
+    rendererStencilPipelineLayout <- Vk.createPipelineLayout
+        environmentDevice
+        Vk.PipelineLayoutCreateInfo {
+            Vk.flags = zeroBits,
+            Vk.setLayouts = V.singleton rendererScreenDSLayout,
+            Vk.pushConstantRanges = V.empty
+        }
+        Nothing
+
+    rendererPatternLayout <- Vk.createPipelineLayout
+        environmentDevice
+        Vk.PipelineLayoutCreateInfo {
+            Vk.flags = zeroBits,
+            Vk.setLayouts = V.fromList [
+                rendererScreenDSLayout,
+                rendererPatternDSLayout
+            ],
+            Vk.pushConstantRanges = V.empty
+        }
+        Nothing
+
+    -- Render Pass
 
     rendererRenderPass <- Vk.createRenderPass
         environmentDevice
@@ -183,128 +208,36 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
         }
         Nothing
 
+    -- Pipeline : Stencil Pipeline
+
     rendererShaderVert <- Vk.createShaderModule
         environmentDevice
         Vk.ShaderModuleCreateInfo {
             Vk.next = (),
             Vk.flags = zeroBits,
-            Vk.code = [Vku.vert|
-                #version 450
-
-                layout (location = 0)
-                in vec2 pos;
-
-                layout (set = 0, binding = 0) uniform Screen {
-                    vec2 size;
-                };
-
-                void main () {
-                    // Map (0, 0) ~ screenSize, to (-1, -1) ~ (+1, +1)
-                    vec2 normPos = (pos / size * 2) - 1;
-
-                    gl_Position = vec4(normPos, 0.0, 1.0);
-                }
-            |]
+            Vk.code = codeStencilVert
         }
         Nothing
 
-    rendererStencilPipelineLayout <- Vk.createPipelineLayout
-        environmentDevice
-        Vk.PipelineLayoutCreateInfo {
-            Vk.flags = zeroBits,
-            Vk.setLayouts = V.singleton rendererScreenDSLayout,
-            Vk.pushConstantRanges = V.empty
-        }
-        Nothing
-
-    let stencilPipelineCreateInfo = (Vk.zero :: Vk.GraphicsPipelineCreateInfo '[]) {
-            Vk.next = (),
-            Vk.stageCount = 1,
-            Vk.stages = V.singleton (
-                Vk.SomeStruct Vk.zero {
-                    Vk.stage = Vk.SHADER_STAGE_VERTEX_BIT,
-                    Vk.name = BSC.pack "main",
-                    Vk.module' = rendererShaderVert
-                }
-            ),
-
-            Vk.vertexInputState = Just $ Vk.SomeStruct $ Vk.zero {
-                Vk.vertexBindingDescriptions = V.singleton Vk.VertexInputBindingDescription {
-                    Vk.binding = 0,
-                    Vk.stride = fromIntegral $ sizeOf (undefined :: V2 Float),
-                    Vk.inputRate = Vk.VERTEX_INPUT_RATE_VERTEX
-                },
-                Vk.vertexAttributeDescriptions = V.singleton Vk.VertexInputAttributeDescription {
-                    Vk.location = 0,
-                    Vk.binding = 0,
-                    Vk.format = Vk.FORMAT_R32G32_SFLOAT,
-                    Vk.offset = 0
-                }
-            },
-
-            Vk.inputAssemblyState = Just $ Vk.zero {
-                Vk.topology = Vk.PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
-            },
-
-            Vk.viewportState = Just $ Vk.SomeStruct Vk.zero {
-                Vk.viewportCount = 1,
-                Vk.scissorCount = 1
-            },
-
-            Vk.rasterizationState = Just $ Vk.SomeStruct Vk.zero {
-                Vk.polygonMode = Vk.POLYGON_MODE_FILL,
-                Vk.cullMode = Vk.CULL_MODE_NONE,
-                Vk.frontFace = Vk.FRONT_FACE_CLOCKWISE,
-                Vk.lineWidth = 1
-            },
-
-            Vk.multisampleState = Just $ Vk.SomeStruct Vk.zero {
-                Vk.next = (),
-                Vk.rasterizationSamples = Vk.SAMPLE_COUNT_1_BIT
-            },
-
-            Vk.depthStencilState = Just Vk.zero {
+    let stencilPipelineCreateInfo = baseStencilPipelineInfo
+            rendererStencilPipelineLayout
+            rendererRenderPass
+            rendererShaderVert
+            Vk.zero {
                 Vk.stencilTestEnable = True,
                 Vk.front = Vk.zero {
                     Vk.passOp = Vk.STENCIL_OP_INCREMENT_AND_WRAP,
                     Vk.compareOp = Vk.COMPARE_OP_ALWAYS,
-                    Vk.compareMask = oneBits,
-                    Vk.writeMask = oneBits
+                    Vk.compareMask = 0xFFFF,
+                    Vk.writeMask = 0xFFFF
                 },
                 Vk.back = Vk.zero {
                     Vk.passOp = Vk.STENCIL_OP_DECREMENT_AND_WRAP,
                     Vk.compareOp = Vk.COMPARE_OP_ALWAYS,
-                    Vk.compareMask = oneBits,
-                    Vk.writeMask = oneBits
+                    Vk.compareMask = 0xFFFF,
+                    Vk.writeMask = 0xFFFF
                 }
-            },
-
-            Vk.colorBlendState = Just $ Vk.SomeStruct Vk.zero {
-                Vk.logicOpEnable = False,
-                Vk.attachmentCount = 1,
-                Vk.attachments = V.fromList [
-                    Vk.zero {
-                        Vk.colorWriteMask =
-                            Vk.COLOR_COMPONENT_R_BIT .|.
-                            Vk.COLOR_COMPONENT_G_BIT .|.
-                            Vk.COLOR_COMPONENT_B_BIT .|.
-                            Vk.COLOR_COMPONENT_A_BIT,
-                        Vk.blendEnable = False
-                    }
-                ]
-            },
-
-            Vk.dynamicState = Just Vk.zero {
-                Vk.dynamicStates = V.fromList [
-                    Vk.DYNAMIC_STATE_VIEWPORT,
-                    Vk.DYNAMIC_STATE_SCISSOR
-                ]
-            },
-
-            Vk.layout = rendererStencilPipelineLayout,
-            Vk.renderPass = rendererRenderPass,
-            Vk.subpass = 0
-        }
+            }
 
     (_, stencilPipelines) <- Vk.createGraphicsPipelines
         environmentDevice
@@ -314,168 +247,23 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
 
     let rendererStencilPipeline = V.head stencilPipelines
 
+    -- Pipeline : Patterns Pipeline
+
     rendererPatternShaderVert <- Vk.createShaderModule
         environmentDevice
         Vk.ShaderModuleCreateInfo {
             Vk.next = (),
             Vk.flags = zeroBits,
-            Vk.code = [Vku.vert|
-                #version 450
-
-                layout (location = 0)
-                in vec2 pos;
-
-                layout (location = 0)
-                out vec2 fragPos;
-
-                layout (set = 0, binding = 0) uniform Screen {
-                    vec2 size;
-                };
-
-                layout (set = 1, binding = 1) uniform Transform {
-                    mat2 transMatrix;
-                    vec2 transTrans;
-                };
-
-                void main () {
-                    gl_Position = vec4 (pos, 0, 1);
-
-                    // Map (-1, -1) ~ (+1, +1), to (0, 0) ~ screenSize
-                    fragPos = inverse(transMatrix) * (((pos + 1) * 0.5f * size) - transTrans);
-                }
-            |]
+            Vk.code = codePatternVert
         }
         Nothing
-
-
-    let basePipelineCreateInfo fragShaderModule pipelineLayout = Vk.zero {
-            Vk.next = (),
-            Vk.stageCount = 2,
-            Vk.stages = V.fromList [
-                Vk.SomeStruct Vk.zero {
-                    Vk.stage = Vk.SHADER_STAGE_VERTEX_BIT,
-                    Vk.name = BSC.pack "main",
-                    Vk.module' = rendererPatternShaderVert
-                },
-                Vk.SomeStruct Vk.zero {
-                    Vk.stage = Vk.SHADER_STAGE_FRAGMENT_BIT,
-                    Vk.name = BSC.pack "main",
-                    Vk.module' = fragShaderModule
-                }
-            ],
-
-            Vk.vertexInputState = Just $ Vk.SomeStruct $ Vk.zero {
-                Vk.vertexBindingDescriptions = V.singleton Vk.VertexInputBindingDescription {
-                    Vk.binding = 0,
-                    Vk.stride = fromIntegral $ sizeOf (undefined :: V2 Float),
-                    Vk.inputRate = Vk.VERTEX_INPUT_RATE_VERTEX
-                },
-                Vk.vertexAttributeDescriptions = V.singleton Vk.VertexInputAttributeDescription {
-                    Vk.location = 0,
-                    Vk.binding = 0,
-                    Vk.format = Vk.FORMAT_R32G32_SFLOAT,
-                    Vk.offset = 0
-                }
-            },
-
-            Vk.inputAssemblyState = Just $ Vk.zero {
-                Vk.topology = Vk.PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
-            },
-
-            Vk.viewportState = Just $ Vk.SomeStruct Vk.zero {
-                Vk.viewportCount = 1,
-                Vk.scissorCount = 1
-            },
-
-            Vk.rasterizationState = Just $ Vk.SomeStruct Vk.zero {
-                Vk.polygonMode = Vk.POLYGON_MODE_FILL,
-                Vk.cullMode = Vk.CULL_MODE_NONE,
-                Vk.lineWidth = 1
-            },
-
-            Vk.multisampleState = Just $ Vk.SomeStruct Vk.zero {
-                Vk.next = (),
-                Vk.rasterizationSamples = Vk.SAMPLE_COUNT_1_BIT
-            },
-
-            -- Use even-odd rule here
-            -- Just check first bit only.
-            Vk.depthStencilState = Just Vk.zero {
-                Vk.stencilTestEnable = True,
-                Vk.front = Vk.zero {
-                    Vk.compareOp = Vk.COMPARE_OP_EQUAL,
-                    Vk.compareMask = 1,
-                    Vk.reference = 1
-                },
-                Vk.back = Vk.zero {
-                    Vk.compareOp = Vk.COMPARE_OP_EQUAL,
-                    Vk.compareMask = 1,
-                    Vk.reference = 1
-                }
-            },
-
-            Vk.colorBlendState = Just $ Vk.SomeStruct Vk.zero {
-                Vk.logicOpEnable = False,
-                Vk.attachmentCount = 1,
-                Vk.attachments = V.fromList [
-                    Vk.zero {
-                        Vk.colorWriteMask =
-                            Vk.COLOR_COMPONENT_R_BIT .|.
-                            Vk.COLOR_COMPONENT_G_BIT .|.
-                            Vk.COLOR_COMPONENT_B_BIT .|.
-                            Vk.COLOR_COMPONENT_A_BIT,
-                        Vk.blendEnable = False
-                    }
-                ]
-            },
-
-            Vk.dynamicState = Just Vk.zero {
-                Vk.dynamicStates = V.fromList [
-                    Vk.DYNAMIC_STATE_VIEWPORT,
-                    Vk.DYNAMIC_STATE_SCISSOR
-                ]
-            },
-
-            Vk.layout = pipelineLayout,
-            Vk.renderPass = rendererRenderPass,
-            Vk.subpass = 0
-        }
-
-    rendererPatternLayout <- Vk.createPipelineLayout
-        environmentDevice
-        Vk.PipelineLayoutCreateInfo {
-            Vk.flags = zeroBits,
-            Vk.setLayouts = V.fromList [
-                rendererScreenDSLayout,
-                rendererPatternDSLayout
-            ],
-            Vk.pushConstantRanges = V.empty
-        }
-        Nothing
-
 
     rendererPatternSolidShaderFrag <- Vk.createShaderModule
         environmentDevice
         Vk.ShaderModuleCreateInfo {
             Vk.next = (),
             Vk.flags = zeroBits,
-            Vk.code = [Vku.frag|
-                #version 450
-
-                layout (location = 0)
-                in vec2 fragPos;
-
-                layout (location = 0)
-                out vec4 color;
-
-                layout (set = 1, binding = 0) uniform PatternSolid {
-                    vec4 patternColor;
-                };
-
-                void main () {
-                    color = patternColor;
-                }
-            |]
+            Vk.code = codePatternSolidFrag
         }
         Nothing
 
@@ -484,30 +272,7 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
         Vk.ShaderModuleCreateInfo {
             Vk.next = (),
             Vk.flags = zeroBits,
-            Vk.code = [Vku.frag|
-                #version 450
-
-                layout (location = 0)
-                in vec2 fragPos;
-
-                layout (location = 0)
-                out vec4 color;
-
-                layout (set = 1, binding = 0) uniform PatternLinear {
-                    vec2 patternPosStart;
-                    vec2 patternPosEnd;
-                    vec4 patternColorStart;
-                    vec4 patternColorEnd;
-                };
-
-                void main () {
-                    vec2 relPos = fragPos - patternPosStart;
-                    vec2 relEnd = patternPosEnd - patternPosStart;
-
-                    float alpha = clamp (dot(relPos, relEnd) / dot(relEnd, relEnd), 0, 1);
-                    color = mix (patternColorStart, patternColorEnd, alpha);
-                }
-            |]
+            Vk.code = codePatternLinearFrag
         }
         Nothing
 
@@ -516,40 +281,29 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
         Vk.ShaderModuleCreateInfo {
             Vk.next = (),
             Vk.flags = zeroBits,
-            Vk.code = [Vku.frag|
-                #version 450
-
-                layout (location = 0)
-                in vec2 fragPos;
-
-                layout (location = 0)
-                out vec4 color;
-
-                layout (set = 1, binding = 0) uniform PatternRadial {
-                    vec2 patternPosCenter;
-                    float patternPosRadius;
-                    vec4 patternColorStart;
-                    vec4 patternColorEnd;
-                };
-
-                void main () {
-                    float dist = distance(fragPos, patternPosCenter);
-
-                    float alpha = clamp (dist / patternPosRadius, 0, 1);
-                    color = mix (patternColorStart, patternColorEnd, alpha);
-                }
-            |]
+            Vk.code = codePatternRadialFrag
         }
         Nothing
-
 
     (_, pipelines) <- Vk.createGraphicsPipelines
         environmentDevice
         Vk.NULL_HANDLE
         (V.fromList [
-            Vk.SomeStruct $ basePipelineCreateInfo rendererPatternSolidShaderFrag rendererPatternLayout,
-            Vk.SomeStruct $ basePipelineCreateInfo rendererPatternLinearShaderFrag rendererPatternLayout,
-            Vk.SomeStruct $ basePipelineCreateInfo rendererPatternRadialShaderFrag rendererPatternLayout
+            Vk.SomeStruct $ basePatternPipelineCreateInfo
+                rendererPatternLayout
+                rendererRenderPass
+                rendererPatternShaderVert
+                rendererPatternSolidShaderFrag,
+            Vk.SomeStruct $ basePatternPipelineCreateInfo
+                rendererPatternLayout
+                rendererRenderPass
+                rendererPatternShaderVert
+                rendererPatternLinearShaderFrag,
+            Vk.SomeStruct $ basePatternPipelineCreateInfo
+                rendererPatternLayout
+                rendererRenderPass
+                rendererPatternShaderVert
+                rendererPatternRadialShaderFrag
         ] )
         Nothing
         -- TOOD: Move else to here!
@@ -559,6 +313,8 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
             case V.toList pipelines of
                 [a, b, c] -> (a, b, c)
                 _ -> error "newRenderer: Got incorrect number of pipeline!"
+
+    -- Descriptor Pool
 
     rendererDescriptorPool <- Vk.createDescriptorPool
         environmentDevice
@@ -572,6 +328,8 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
         }
         Nothing
 
+    -- Command Pool
+
     rendererCommandPool <- Vk.createCommandPool
         environmentDevice
         Vk.CommandPoolCreateInfo { -- Vk.CommandPoolCreateInfo
@@ -579,6 +337,9 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
             Vk.queueFamilyIndex = environmentGraphicsQFI
         }
         Nothing
+
+
+    -- Basic Shapes
 
     rendererQuadVertices <- newTypedBufferF
         rendererEnvironment
@@ -606,21 +367,337 @@ freeRenderer Renderer {..} = do
     let Environment {..} = rendererEnvironment
     freeTypedBuffer rendererEnvironment rendererQuadIndices
     freeTypedBuffer rendererEnvironment rendererQuadVertices
-    Vk.destroyPipeline environmentDevice rendererPatternRadial Nothing
-    Vk.destroyShaderModule environmentDevice rendererPatternRadialShaderFrag Nothing
-    Vk.destroyPipeline environmentDevice rendererPatternLinear Nothing
-    Vk.destroyShaderModule environmentDevice rendererPatternLinearShaderFrag Nothing
-    Vk.destroyPipeline environmentDevice rendererPatternSolid Nothing
-    Vk.destroyShaderModule environmentDevice rendererPatternSolidShaderFrag Nothing
-    Vk.destroyPipelineLayout environmentDevice rendererPatternLayout Nothing
-    Vk.destroyShaderModule environmentDevice rendererPatternShaderVert Nothing
-    Vk.destroyPipeline environmentDevice rendererStencilPipeline Nothing
-    Vk.destroyPipelineLayout environmentDevice rendererStencilPipelineLayout Nothing
-    Vk.destroyShaderModule environmentDevice rendererShaderVert Nothing
-    Vk.destroyRenderPass environmentDevice rendererRenderPass Nothing
-    Vk.destroyDescriptorSetLayout environmentDevice rendererPatternDSLayout Nothing
-    Vk.destroyDescriptorSetLayout environmentDevice rendererScreenDSLayout Nothing
+
     Vk.destroyCommandPool environmentDevice rendererCommandPool Nothing
     Vk.destroyDescriptorPool environmentDevice rendererDescriptorPool Nothing
+
+    Vk.destroyPipeline environmentDevice rendererPatternRadial Nothing
+    Vk.destroyPipeline environmentDevice rendererPatternLinear Nothing
+    Vk.destroyPipeline environmentDevice rendererPatternSolid Nothing
+
+    Vk.destroyShaderModule environmentDevice rendererPatternRadialShaderFrag Nothing
+    Vk.destroyShaderModule environmentDevice rendererPatternLinearShaderFrag Nothing
+    Vk.destroyShaderModule environmentDevice rendererPatternSolidShaderFrag Nothing
+    Vk.destroyShaderModule environmentDevice rendererPatternShaderVert Nothing
+
+    Vk.destroyPipeline environmentDevice rendererStencilPipeline Nothing
+    Vk.destroyShaderModule environmentDevice rendererShaderVert Nothing
+
+    Vk.destroyRenderPass environmentDevice rendererRenderPass Nothing
+
+    Vk.destroyPipelineLayout environmentDevice rendererPatternLayout Nothing
+    Vk.destroyPipelineLayout environmentDevice rendererStencilPipelineLayout Nothing
+    Vk.destroyDescriptorSetLayout environmentDevice rendererPatternDSLayout Nothing
+    Vk.destroyDescriptorSetLayout environmentDevice rendererScreenDSLayout Nothing
+
+
+
+-- Common part of pipeline build
+
+baseVertexInputStateCreateInfo :: Vk.PipelineVertexInputStateCreateInfo '[]
+baseVertexInputStateCreateInfo = Vk.PipelineVertexInputStateCreateInfo {
+        Vk.next = (),
+        Vk.flags = zeroBits,
+        Vk.vertexBindingDescriptions = V.singleton Vk.VertexInputBindingDescription {
+            Vk.binding = 0,
+            Vk.stride = fromIntegral $ sizeOf (undefined :: V2 Float),
+            Vk.inputRate = Vk.VERTEX_INPUT_RATE_VERTEX
+        },
+        Vk.vertexAttributeDescriptions = V.singleton Vk.VertexInputAttributeDescription {
+            Vk.location = 0,
+            Vk.binding = 0,
+            Vk.format = Vk.FORMAT_R32G32_SFLOAT,
+            Vk.offset = 0
+        }
+    }
+
+baseInputAssemblyStateCreateInfo :: Vk.PipelineInputAssemblyStateCreateInfo
+baseInputAssemblyStateCreateInfo = Vk.PipelineInputAssemblyStateCreateInfo {
+        Vk.flags = zeroBits,
+        Vk.topology = Vk.PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        Vk.primitiveRestartEnable = False
+    }
+
+baseViewportStateCreateInfo :: Vk.PipelineViewportStateCreateInfo '[]
+baseViewportStateCreateInfo = Vk.PipelineViewportStateCreateInfo {
+        Vk.next = (),
+        Vk.flags = zeroBits,
+        Vk.viewportCount = 1,
+        Vk.viewports = V.empty,
+        Vk.scissorCount = 1,
+        Vk.scissors = V.empty
+    }
+
+baseMultisampleStateCreateInfo :: Vk.PipelineMultisampleStateCreateInfo '[]
+baseMultisampleStateCreateInfo = Vk.PipelineMultisampleStateCreateInfo {
+        Vk.next = (),
+        Vk.flags = zeroBits,
+        Vk.rasterizationSamples = Vk.SAMPLE_COUNT_1_BIT,
+        Vk.sampleShadingEnable = False,
+        Vk.minSampleShading = 0.0,
+        Vk.sampleMask = V.empty,
+        Vk.alphaToCoverageEnable = False,
+        Vk.alphaToOneEnable = False
+    }
+
+
+baseStencilPipelineInfo
+    :: Vk.PipelineLayout
+    -> Vk.RenderPass
+    -> Vk.ShaderModule
+    -> Vk.PipelineDepthStencilStateCreateInfo
+    -> Vk.GraphicsPipelineCreateInfo '[]
+baseStencilPipelineInfo pipelineLayout renderPass vertModule depthState = Vk.GraphicsPipelineCreateInfo {
+        Vk.next = (),
+        Vk.flags = zeroBits,
+        Vk.stageCount = 1,
+        Vk.stages = V.singleton (
+            Vk.SomeStruct Vk.zero {
+                Vk.stage = Vk.SHADER_STAGE_VERTEX_BIT,
+                Vk.name = BSC.pack "main",
+                Vk.module' = vertModule
+            }
+        ),
+
+        Vk.vertexInputState = Just $ Vk.SomeStruct baseVertexInputStateCreateInfo,
+        Vk.inputAssemblyState = Just baseInputAssemblyStateCreateInfo,
+        Vk.viewportState = Just $ Vk.SomeStruct baseViewportStateCreateInfo,
+        Vk.tessellationState = Nothing,
+        Vk.rasterizationState = Just $ Vk.SomeStruct Vk.zero {
+            Vk.polygonMode = Vk.POLYGON_MODE_FILL,
+            Vk.cullMode = Vk.CULL_MODE_NONE,
+            Vk.frontFace = Vk.FRONT_FACE_CLOCKWISE,
+            Vk.lineWidth = 1
+        },
+
+        Vk.multisampleState = Just $ Vk.SomeStruct baseMultisampleStateCreateInfo,
+        Vk.depthStencilState = Just depthState,
+
+        Vk.colorBlendState = Just $ Vk.SomeStruct Vk.zero {
+            Vk.logicOpEnable = False,
+            Vk.attachmentCount = 1,
+            Vk.attachments = V.fromList [
+                Vk.zero {
+                    Vk.colorWriteMask =
+                        Vk.COLOR_COMPONENT_R_BIT .|.
+                        Vk.COLOR_COMPONENT_G_BIT .|.
+                        Vk.COLOR_COMPONENT_B_BIT .|.
+                        Vk.COLOR_COMPONENT_A_BIT,
+                    Vk.blendEnable = False
+                }
+            ]
+        },
+
+        Vk.dynamicState = Just Vk.zero {
+            Vk.dynamicStates = V.fromList [
+                Vk.DYNAMIC_STATE_VIEWPORT,
+                Vk.DYNAMIC_STATE_SCISSOR
+            ]
+        },
+
+        Vk.layout = pipelineLayout,
+        Vk.renderPass = renderPass,
+        Vk.subpass = 0,
+
+        Vk.basePipelineHandle = Vk.NULL_HANDLE,
+        Vk.basePipelineIndex = -1
+    }
+
+
+basePatternPipelineCreateInfo
+    :: Vk.PipelineLayout
+    -> Vk.RenderPass
+    -> Vk.ShaderModule
+    -> Vk.ShaderModule
+    -> Vk.GraphicsPipelineCreateInfo '[]
+basePatternPipelineCreateInfo pipelineLayout renderPass vertModule fragModule = Vk.zero {
+        Vk.next = (),
+        Vk.stageCount = 2,
+        Vk.stages = V.fromList [
+            Vk.SomeStruct Vk.zero {
+                Vk.stage = Vk.SHADER_STAGE_VERTEX_BIT,
+                Vk.name = BSC.pack "main",
+                Vk.module' = vertModule
+            },
+            Vk.SomeStruct Vk.zero {
+                Vk.stage = Vk.SHADER_STAGE_FRAGMENT_BIT,
+                Vk.name = BSC.pack "main",
+                Vk.module' = fragModule
+            }
+        ],
+
+        Vk.vertexInputState = Just $ Vk.SomeStruct baseVertexInputStateCreateInfo,
+        Vk.inputAssemblyState = Just baseInputAssemblyStateCreateInfo,
+        Vk.viewportState = Just $ Vk.SomeStruct baseViewportStateCreateInfo,
+        Vk.tessellationState = Nothing,
+
+        Vk.rasterizationState = Just $ Vk.SomeStruct Vk.zero {
+            Vk.polygonMode = Vk.POLYGON_MODE_FILL,
+            Vk.cullMode = Vk.CULL_MODE_NONE,
+            Vk.lineWidth = 1
+        },
+
+        Vk.multisampleState = Just $ Vk.SomeStruct baseMultisampleStateCreateInfo,
+
+        -- Use even-odd rule here
+        -- Just check first bit only.
+        Vk.depthStencilState = Just Vk.zero {
+            Vk.stencilTestEnable = True,
+            Vk.front = Vk.zero {
+                Vk.compareOp = Vk.COMPARE_OP_EQUAL,
+                Vk.compareMask = 1,
+                Vk.reference = 1
+            },
+            Vk.back = Vk.zero {
+                Vk.compareOp = Vk.COMPARE_OP_EQUAL,
+                Vk.compareMask = 1,
+                Vk.reference = 1
+            }
+        },
+
+        Vk.colorBlendState = Just $ Vk.SomeStruct Vk.zero {
+            Vk.logicOpEnable = False,
+            Vk.attachmentCount = 1,
+            Vk.attachments = V.fromList [
+                Vk.zero {
+                    Vk.colorWriteMask =
+                        Vk.COLOR_COMPONENT_R_BIT .|.
+                        Vk.COLOR_COMPONENT_G_BIT .|.
+                        Vk.COLOR_COMPONENT_B_BIT .|.
+                        Vk.COLOR_COMPONENT_A_BIT,
+                    Vk.blendEnable = False
+                }
+            ]
+        },
+
+        Vk.dynamicState = Just Vk.zero {
+            Vk.dynamicStates = V.fromList [
+                Vk.DYNAMIC_STATE_VIEWPORT,
+                Vk.DYNAMIC_STATE_SCISSOR
+            ]
+        },
+
+        Vk.layout = pipelineLayout,
+        Vk.renderPass = renderPass,
+        Vk.subpass = 0
+    }
+
+-- Shader code
+
+codeStencilVert :: BSC.ByteString
+codeStencilVert = [Vku.vert|
+        #version 450
+
+        layout (location = 0)
+        in vec2 pos;
+
+        layout (set = 0, binding = 0) uniform Screen {
+            vec2 size;
+        };
+
+        void main () {
+            // Map (0, 0) ~ screenSize, to (-1, -1) ~ (+1, +1)
+            vec2 normPos = (pos / size * 2) - 1;
+
+            gl_Position = vec4(normPos, 0.0, 1.0);
+        }
+    |]
+
+codePatternVert :: BSC.ByteString
+codePatternVert = [Vku.vert|
+        #version 450
+
+        layout (location = 0)
+        in vec2 pos;
+
+        layout (location = 0)
+        out vec2 fragPos;
+
+        layout (set = 0, binding = 0) uniform Screen {
+            vec2 size;
+        };
+
+        layout (set = 1, binding = 1) uniform Transform {
+            mat2 transMatrix;
+            vec2 transTrans;
+        };
+
+        void main () {
+            gl_Position = vec4 (pos, 0, 1);
+
+            // Map (-1, -1) ~ (+1, +1), to (0, 0) ~ screenSize
+            fragPos = inverse(transMatrix) * (((pos + 1) * 0.5f * size) - transTrans);
+        }
+    |]
+
+codePatternSolidFrag :: BSC.ByteString
+codePatternSolidFrag = [Vku.frag|
+        #version 450
+
+        layout (location = 0)
+        in vec2 fragPos;
+
+        layout (location = 0)
+        out vec4 color;
+
+        layout (set = 1, binding = 0) uniform PatternSolid {
+            vec4 patternColor;
+        };
+
+        void main () {
+            color = patternColor;
+        }
+    |]
+
+codePatternLinearFrag :: BSC.ByteString
+codePatternLinearFrag = [Vku.frag|
+        #version 450
+
+        layout (location = 0)
+        in vec2 fragPos;
+
+        layout (location = 0)
+        out vec4 color;
+
+        layout (set = 1, binding = 0) uniform PatternLinear {
+            vec2 patternPosStart;
+            vec2 patternPosEnd;
+            vec4 patternColorStart;
+            vec4 patternColorEnd;
+        };
+
+        void main () {
+            vec2 relPos = fragPos - patternPosStart;
+            vec2 relEnd = patternPosEnd - patternPosStart;
+
+            float alpha = clamp (dot(relPos, relEnd) / dot(relEnd, relEnd), 0, 1);
+            color = mix (patternColorStart, patternColorEnd, alpha);
+        }
+    |]
+
+codePatternRadialFrag :: BSC.ByteString
+codePatternRadialFrag = [Vku.frag|
+        #version 450
+
+        layout (location = 0)
+        in vec2 fragPos;
+
+        layout (location = 0)
+        out vec4 color;
+
+        layout (set = 1, binding = 0) uniform PatternRadial {
+            vec2 patternPosCenter;
+            float patternPosRadius;
+            vec4 patternColorStart;
+            vec4 patternColorEnd;
+        };
+
+        void main () {
+            float dist = distance(fragPos, patternPosCenter);
+
+            float alpha = clamp (dist / patternPosRadius, 0, 1);
+            color = mix (patternColorStart, patternColorEnd, alpha);
+        }
+    |]
 
 
