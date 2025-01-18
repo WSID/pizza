@@ -31,6 +31,12 @@ newtype Graphics = Graphics [DrawItem]
 instance Transformable Graphics where
     transform tr (Graphics items) = Graphics (fmap (transform tr) items)
 
+instance Semigroup Graphics where
+    Graphics a <> Graphics b = Graphics (a <> b)
+
+instance Monoid Graphics where
+    mempty = Graphics mempty
+
 data Pattern =
     PatternSolid (V4 Float) |
     PatternLinear (V2 Float) (V2 Float) (V4 Float) (V4 Float) |

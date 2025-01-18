@@ -214,81 +214,64 @@ createSwapchain Pz.Environment {..} SurfaceState {..} width height = do
     Vk.createSwapchainKHR environmentDevice swapchainCreateInfo Nothing
 
 makeGraphic :: Float -> Pz.Graphics
-makeGraphic time = Pz.Graphics [
-        Pz.DrawShape paths pattern1 (Pz.fromPose (V2 (-200) 100) 0 (V2 1 1)),
-        Pz.DrawShape strokes pattern2 (Pz.fromScale (V2 0.5 0.5)),
-        Pz.DrawShape dashedPaths pattern3 mempty
-    ]
-  where
-    theta = time * 2
-    animValue1 = 400 * cos theta
-    animValue2 = 100 * sin theta
+makeGraphic time = let env = Pz.defPaintingEnv { Pz.paintingThickness = 10 }
+    in flip Pz.runPainting_ env $ do
+        let theta = time * 2
+            animValue1 = 400 * cos theta
+            animValue2 = 100 * sin theta
 
-    paths =
-        [
-            Pz.Path
-                [
-                    Pz.PathCurve $ Pz.bezier
-                        (V2 0 200)
-                        [
-                            V2 0 (0 - animValue1),
-                            V2 400 (400 + animValue1)
-                        ]
-                        (V2 400 200),
-                    Pz.PathCurve $ Pz.arc
-                        (V2 (300 + animValue2) 200)
-                        (100 - animValue2)
-                        0
-                        (negate pi),
-                    Pz.PathCurve $ Pz.arc
-                        (V2 (100 + animValue2) 200)
-                        (100 + animValue2)
-                        0
-                        pi
-                ],
-            Pz.circle (V2 200 200) (100 + animValue2)
-        ]
+        -- Shape 1
+        let pattern1 = Pz.PatternRadial
+                (V2 (200 + 400 * cos theta) (400 + 400 * sin theta))
+                400
+                (V4 1 1 0 1)
+                (V4 0 1 1 1)
 
-    strokes = Pz.stroke strokeR
-        (Pz.strokeEndBoth Pz.strokeCapRound)
-        (Pz.Path [
-                Pz.PathCurve $ Pz.arc (V2 300 100) 50 (pi * (-0.5)) (pi * (0.5)),
-                Pz.PathCurve $ Pz.arc (V2 100 100) 50 (pi * (0.5)) (pi * (1.5))
-            ])
+        Pz.localTransform (Pz.transform (Pz.fromPose (V2 (-200) 100) 0 (V2 1 1))) $ do
+            Pz.localPattern (const pattern1) $ do
+                Pz.paintFillShaping $ do
+                    Pz.shapingPathing $ do
+                        Pz.pathingCurve $ Pz.bezier
+                            (V2 0 200)
+                            [ V2 0 (0 - animValue1), V2 400 (400 + animValue1) ]
+                            (V2 400 200)
 
-    stroke10 = Pz.StrokeOption {
-        Pz.strokeThickness = 10,
-        Pz.strokeJoin = Pz.strokeJoinMiter
-    }
+                        Pz.pathingCurve $ Pz.arc
+                            (V2 (300 + animValue2) 200)
+                            (100 - animValue2)
+                            0
+                            (negate pi)
 
-    strokeR = Pz.StrokeOption {
-        Pz.strokeThickness = 10,
-        Pz.strokeJoin = Pz.strokeJoinRound
-    }
+                        Pz.pathingCurve $ Pz.arc
+                            (V2 (100 + animValue2) 200)
+                            (100 + animValue2)
+                            0
+                            pi
+                    Pz.shapingPath () $ Pz.circle (V2 200 200) (100 + animValue2)
 
-    dashedPaths = Pz.dashStroke
-        (Pz.DashPattern True (50 + 50 * sin theta : cycle [50, 50, 50, 50]))
-        stroke10
-        Pz.StrokeClose
-        (Pz.Path [
-                Pz.PathCurve $ Pz.arc (V2 300 300) 50 (pi * (-0.5)) (pi * (0.5)),
-                Pz.PathCurve $ Pz.arc (V2 100 300) 50 (pi * (0.5)) (pi * (1.5))
-            ]
-        )
+        -- Shape 2
+        let pattern2 = Pz.PatternLinear
+                (V2 (200 - 200 * cos theta) (200 + 200 * sin theta))
+                (V2 (200 + 200 * cos theta) (200 - 200 * sin theta))
+                (V4 0 1 0 1)
+                (V4 1 0 1 1)
 
-    pattern1 = Pz.PatternRadial
-        (V2 (200 + 400 * cos theta) (400 + 400 * sin theta))
-        400
-        (V4 1 1 0 1)
-        (V4 0 1 1 1)
+        Pz.localTransform (Pz.scale (V2 0.5 0.5)) $ do
+            Pz.localPattern (const pattern2) $ do
+                Pz.localEndCaps (const (Pz.strokeCapRound, Pz.strokeCapRound)) $ do
+                    Pz.paintStrokeOpenPathing $ do
+                        Pz.pathingCurve $ Pz.arc (V2 300 100) 50 (pi * (-0.5)) (pi * (0.5))
+                        Pz.pathingCurve $ Pz.arc (V2 100 100) 50 (pi * (0.5)) (pi * (1.5))
 
-    pattern2 = Pz.PatternLinear
-        (V2 (200 - 200 * cos theta) (200 + 200 * sin theta))
-        (V2 (200 + 200 * cos theta) (200 - 200 * sin theta))
-        (V4 0 1 0 1)
-        (V4 1 0 1 1)
+        -- Shape 3
+        let pattern3 = Pz.PatternSolid (V4 1 1 1 1)
 
-    pattern3 = Pz.PatternSolid (V4 1 1 1 1)
+        Pz.localTransform (Pz.translate (V2 0 200)) $ do
+            Pz.localPattern (const pattern3) $ do
+                Pz.localDashPattern (const $ Just (Pz.DashPattern True (50 + 50 * sin theta : cycle [50, 50, 50, 50]))) $ do
+                    Pz.paintStrokeClosePathing $ do
+                        Pz.pathingCurve $ Pz.arc (V2 300 100) 50 (pi * (-0.5)) (pi * (0.5))
+                        Pz.pathingCurve $ Pz.arc (V2 100 100) 50 (pi * (0.5)) (pi * (1.5))
 
 
 main :: IO ()
