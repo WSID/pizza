@@ -26,17 +26,13 @@ import Linear
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
 
+import Data.Vector (Vector)
 import qualified Data.Vector as V
 
 import qualified Graphics.UI.GLFW as GLFW
 
 import qualified Vulkan as Vk
-import qualified Vulkan.CStruct.Extends as Vk
 import qualified Vulkan.Zero as Vk
-import qualified Vulkan.Dynamic as Vk
-
--- VulkanMemoryAllocator
-import qualified VulkanMemoryAllocator as Vma
 
 import qualified Graphics.Pizza as Pz
 
@@ -78,75 +74,34 @@ deviceSelection inst device = do
             devSelectionGraphicQueueFamilyIndex = fst $ V.head graphicsQueueFamilies
         }
 
-createEnvironment :: IO Pz.Environment
-createEnvironment = do
-    let appInfo = (Vk.zero :: Vk.ApplicationInfo) {
-        Vk.applicationName = Just $ BSC.pack "pizza-preview-window"
-    }
-
-    let instLayers = V.singleton $ BSC.pack "VK_LAYER_KHRONOS_validation"
-
-    instExtensionsGLFW <- GLFW.getRequiredInstanceExtensions
-    instExtensionsVK <- V.fromList <$> traverse BS.packCString instExtensionsGLFW
-
-    let instCreateInfo = (Vk.zero :: Vk.InstanceCreateInfo '[]) {
-        Vk.applicationInfo = Just appInfo,
-        Vk.enabledLayerNames = instLayers,
-        Vk.enabledExtensionNames = instExtensionsVK
-    }
-    environmentInst <- Vk.createInstance instCreateInfo Nothing
-    putStrLn "Vulkan is initialized"
-
-    -- Pick devices
-    (_, pdevices) <- Vk.enumeratePhysicalDevices environmentInst
+pickDevice :: Vk.Instance -> Vector Vk.PhysicalDevice -> IO (Vk.PhysicalDevice, Word32)
+pickDevice inst pdevices = do
+    
     pdevicesWithScore <- flip V.mapMaybeM pdevices $ \pdevice -> do
-         selection <- deviceSelection environmentInst pdevice
+         selection <- deviceSelection inst pdevice
          pure $ fmap (\s -> (s, pdevice)) selection
 
     when (null pdevicesWithScore) $ die "No suitable device!"
 
-    let (selection, environmentPhysDevice) = V.maximumOn (devSelectionScore . fst) pdevicesWithScore
+    let (selection, pdevice) = V.maximumOn (devSelectionScore . fst) pdevicesWithScore
+    pure (pdevice, fromIntegral $ devSelectionGraphicQueueFamilyIndex selection)
 
-    -- Create Device
-    let devExtensions = V.singleton Vk.KHR_SWAPCHAIN_EXTENSION_NAME
+createEnvironment :: IO Pz.Environment
+createEnvironment = do
+    instExtensionsGLFW <- GLFW.getRequiredInstanceExtensions
+    instExtensionsVK <- traverse BS.packCString instExtensionsGLFW
 
-    let environmentGraphicsQFI = fromIntegral $
-            devSelectionGraphicQueueFamilyIndex selection
-
-    let graphicsQueueCreateInfo = (Vk.zero :: Vk.DeviceQueueCreateInfo '[]) {
-        Vk.queueFamilyIndex = environmentGraphicsQFI,
-        Vk.queuePriorities = V.fromList [1.0]
+    let envOpt = Pz.EnvOptSimple {
+        Pz.envOptInstExtensions = instExtensionsVK,
+        Pz.envOptInstLayers = [BSC.pack "VK_LAYER_KHRONOS_validation"],
+        Pz.envOptPickDevice = pickDevice,
+        Pz.envOptDevExtensions = [Vk.KHR_SWAPCHAIN_EXTENSION_NAME],
+        Pz.envOptDevLayers = [],
+        Pz.envOptAppName = Just $ BSC.pack "pizza-preview-window",
+        Pz.envOptAppVersion = 0
     }
 
-    let devCreateInfo = (Vk.zero :: Vk.DeviceCreateInfo '[]) {
-        Vk.queueCreateInfos = V.fromList [Vk.SomeStruct graphicsQueueCreateInfo],
-        Vk.enabledExtensionNames = devExtensions
-    }
-    environmentDevice <- Vk.createDevice environmentPhysDevice devCreateInfo Nothing
-    environmentGraphicsQueue <- Vk.getDeviceQueue environmentDevice environmentGraphicsQFI 0
-
-    let Vk.Instance {
-        Vk.instanceCmds = instFuncs
-    } = environmentInst
-
-    let Vk.Device {
-        Vk.deviceCmds = devFuncs
-    } = environmentDevice
-
-    environmentAllocator <- Vma.createAllocator
-        -- Vma.AllocatorCreateInfo
-        Vk.zero {
-            Vma.physicalDevice = Vk.physicalDeviceHandle environmentPhysDevice,
-            Vma.device = Vk.deviceHandle environmentDevice,
-            Vma.instance' = Vk.instanceHandle environmentInst,
-            Vma.vulkanFunctions = Just Vk.zero {
-                Vma.vkGetInstanceProcAddr = castFunPtr $ Vk.pVkGetInstanceProcAddr instFuncs,
-                Vma.vkGetDeviceProcAddr = castFunPtr $ Vk.pVkGetDeviceProcAddr devFuncs
-            }
-        }
-
-
-    pure Pz.Environment { .. }
+    Pz.newEnvironmentSimple envOpt
 
 
 createSurfaceState :: Pz.Environment -> GLFW.Window -> IO SurfaceState

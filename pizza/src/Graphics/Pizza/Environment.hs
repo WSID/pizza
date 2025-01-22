@@ -13,6 +13,7 @@ import Data.Word
 import Foreign.Ptr
 
 -- vector
+import Data.Vector (Vector)
 import qualified Data.Vector as V
 
 -- bytestring
@@ -37,19 +38,29 @@ data Environment = Environment {
     environmentAllocator :: Vma.Allocator
 }
 
--- | Create a basic environment for vector graphics.
-newBasicEnvironment :: MonadIO m => m Environment
-newBasicEnvironment = do
-    environmentInst <- Vk.createInstance Vk.zero {
-        Vk.applicationInfo = Just Vk.zero {
-            Vk.engineName = Just $ BSC.pack "pizza",
-            Vk.engineVersion = Vk.MAKE_API_VERSION 0 0 0,
-            Vk.apiVersion = Vk.API_VERSION_1_0
-        }
-    } Nothing
+data EnvOptSimple = EnvOptSimple {
+    envOptInstExtensions :: [BSC.ByteString],
+    envOptInstLayers :: [BSC.ByteString],
+    envOptPickDevice :: Vk.Instance -> Vector Vk.PhysicalDevice -> IO (Vk.PhysicalDevice, Word32),
+    envOptDevExtensions :: [BSC.ByteString],
+    envOptDevLayers :: [BSC.ByteString],
+    envOptAppName :: Maybe BSC.ByteString,
+    envOptAppVersion :: Word32
+}
 
-    (_, physDevices) <- Vk.enumeratePhysicalDevices environmentInst
+defaultEnvOptSimple :: EnvOptSimple
+defaultEnvOptSimple = EnvOptSimple {
+    envOptInstExtensions = [],
+    envOptInstLayers = [],
+    envOptPickDevice = defaultPickDevice,
+    envOptDevExtensions = [],
+    envOptDevLayers = [],
+    envOptAppName = Nothing,
+    envOptAppVersion = 0
+}
 
+defaultPickDevice :: Vk.Instance -> Vector Vk.PhysicalDevice -> IO (Vk.PhysicalDevice, Word32)
+defaultPickDevice _ physDevices = do
     physDeviceGraphicsQFIs <- for physDevices $ \physDevice -> do
         qprops <- Vk.getPhysicalDeviceQueueFamilyProperties physDevice
 
@@ -58,9 +69,34 @@ newBasicEnvironment = do
 
         pure $ fromIntegral <$> V.findIndex queueCriteria qprops
 
-    let (environmentPhysDevice, environmentGraphicsQFI) = V.head
-            $ V.mapMaybe (\(a, b) -> (,) <$> Just a <*> b)
-            $ V.zip physDevices physDeviceGraphicsQFIs
+    pure
+        $ V.head
+        $ V.mapMaybe (\(a, b) -> (,) <$> Just a <*> b)
+        $ V.zip physDevices physDeviceGraphicsQFIs
+
+
+-- | Create a basic environment for vector graphics.
+newBasicEnvironment :: MonadIO m => m Environment
+newBasicEnvironment = newEnvironmentSimple defaultEnvOptSimple
+
+newEnvironmentSimple :: MonadIO m => EnvOptSimple -> m Environment
+newEnvironmentSimple EnvOptSimple {..} = do
+    environmentInst <- Vk.createInstance Vk.zero {
+        Vk.applicationInfo = Just Vk.ApplicationInfo {
+            Vk.applicationName = envOptAppName,
+            Vk.applicationVersion = envOptAppVersion,
+            Vk.engineName = Just $ BSC.pack "pizza",
+            Vk.engineVersion = Vk.MAKE_API_VERSION 0 1 0,
+            Vk.apiVersion = Vk.API_VERSION_1_0
+        },
+        Vk.enabledLayerNames = V.fromList envOptInstLayers,
+        Vk.enabledExtensionNames = V.fromList envOptInstExtensions
+    } Nothing
+
+    (_, physDevices) <- Vk.enumeratePhysicalDevices environmentInst
+
+    (environmentPhysDevice, environmentGraphicsQFI) <- liftIO
+        $ envOptPickDevice environmentInst physDevices
 
     environmentDevice <- Vk.createDevice
         environmentPhysDevice
@@ -68,7 +104,9 @@ newBasicEnvironment = do
             Vk.queueCreateInfos = V.singleton $ Vk.SomeStruct Vk.zero {
                 Vk.queueFamilyIndex = environmentGraphicsQFI,
                 Vk.queuePriorities = V.singleton 1.0
-            }
+            },
+            Vk.enabledLayerNames = V.fromList envOptDevLayers,
+            Vk.enabledExtensionNames = V.fromList envOptDevExtensions
         }
         Nothing
 
