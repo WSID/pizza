@@ -62,6 +62,7 @@ library
     exposed-modules:
         Graphics.Pizza,
         Graphics.Pizza.Environment,
+        Graphics.Pizza.Exchange,
         Graphics.Pizza.Graphic,
         Graphics.Pizza.Graphic.Curve,
         Graphics.Pizza.Graphic.Dash,
