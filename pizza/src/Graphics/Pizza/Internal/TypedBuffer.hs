@@ -86,16 +86,21 @@ unmapTypedBuffer :: (MonadIO m) => Environment -> TypedBuffer a -> m ()
 unmapTypedBuffer Environment {..} TypedBuffer {..} =
     Vma.unmapMemory environmentAllocator typedBufferAlloc
 
-
-readTypedBuffer1 :: (MonadIO m, Storable a) => Environment -> TypedBuffer a -> m a
-readTypedBuffer1 environment typedBuffer = do
+withTypedBufferMap :: (MonadIO m) => Environment -> TypedBuffer a -> (Ptr a -> m b) -> m b
+withTypedBufferMap environment typedBuffer action = do 
     ptr <- mapTypedBuffer environment typedBuffer
-    result <- liftIO $ peek ptr
+    result <- action ptr
     unmapTypedBuffer environment typedBuffer
     pure result
 
+readTypedBuffer1 :: (MonadIO m, Storable a) => Environment -> TypedBuffer a -> m a
+readTypedBuffer1 environment typedBuffer = withTypedBufferMap environment typedBuffer $ liftIO . peek
+
 writeTypedBuffer1 :: (MonadIO m, Storable a) => Environment -> TypedBuffer a -> a -> m ()
-writeTypedBuffer1 environment typedBuffer a = do
-    ptr <- mapTypedBuffer environment typedBuffer
-    liftIO $ poke ptr a
-    unmapTypedBuffer environment typedBuffer
+writeTypedBuffer1 environment typedBuffer a = withTypedBufferMap environment typedBuffer $ \p -> liftIO (poke p a)
+
+readTypedBufferN :: (MonadIO m, Storable a) => Environment -> TypedBuffer a -> Int -> m [a]
+readTypedBufferN environment typedBuffer n = withTypedBufferMap environment typedBuffer $ \p -> liftIO (peekArray n p)
+
+writeTypedBufferN :: (MonadIO m, Storable a) => Environment -> TypedBuffer a -> [a] -> m ()
+writeTypedBufferN environment typedBuffer a = withTypedBufferMap environment typedBuffer $ \p -> liftIO (pokeArray p a)

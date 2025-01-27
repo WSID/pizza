@@ -45,9 +45,7 @@ makeRenderedImage graphics = do
     _ <- Vk.waitForFences environmentDevice (V.singleton (exchangeFence exchange)) True maxBound
 
     -- Copy image pixels from exchange.
-    ptr <- mapExchange renderer exchange
-    result <- peekArray (200 * 200) ptr
-    unmapExchange renderer exchange
+    result <- readExchangeN renderer exchange (200 * 200)
 
     -- Wrap up & clean up
     freeExchange renderer exchange

@@ -89,6 +89,11 @@ writeExchange1 renderer exchange = writeTypedBuffer1 (rendererEnvironment render
 readExchange1 :: (MonadIO m, Storable a) => Renderer -> Exchange a -> m a
 readExchange1 renderer exchange = readTypedBuffer1 (rendererEnvironment renderer) (exchangeBuffer exchange)
 
+writeExchangeN :: (MonadIO m, Storable a) => Renderer -> Exchange a -> [a] -> m ()
+writeExchangeN renderer exchange = writeTypedBufferN (rendererEnvironment renderer) (exchangeBuffer exchange)
+
+readExchangeN :: (MonadIO m, Storable a) => Renderer -> Exchange a -> Int -> m [a]
+readExchangeN renderer exchange = readTypedBufferN (rendererEnvironment renderer) (exchangeBuffer exchange)
 
 -- This now requires a command buffer write, and wait.
 -- TODO: How to wrap semaphore?
