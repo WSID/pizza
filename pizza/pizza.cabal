@@ -63,6 +63,7 @@ library
         Graphics.Pizza,
         Graphics.Pizza.Environment,
         Graphics.Pizza.Exchange,
+        Graphics.Pizza.Format,
         Graphics.Pizza.Graphic,
         Graphics.Pizza.Graphic.Curve,
         Graphics.Pizza.Graphic.Dash,
