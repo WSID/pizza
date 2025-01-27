@@ -103,7 +103,7 @@ data RenderStateSwapchain = RenderStateSwapchain {
     renderStateImageSemaphore :: Vk.Semaphore
 }
 
-newRenderState :: (MonadIO m) => Renderer -> m RenderState
+newRenderState :: (MonadIO m) => Renderer px -> m RenderState
 newRenderState Renderer {..} = do
     let Environment {..} = rendererEnvironment
     commandBuffers <- Vk.allocateCommandBuffers
@@ -189,7 +189,7 @@ newRenderState Renderer {..} = do
 
     pure RenderState {..}
 
-freeRenderState :: (MonadIO m) => Renderer -> RenderState -> m ()
+freeRenderState :: (MonadIO m) => Renderer px -> RenderState -> m ()
 freeRenderState Renderer {..} RenderState {..} = do
     let Environment {..} = rendererEnvironment
     Vk.destroyFence environmentDevice renderStateFence Nothing
@@ -203,7 +203,7 @@ freeRenderState Renderer {..} RenderState {..} = do
     Vk.freeCommandBuffers environmentDevice rendererCommandPool (V.singleton renderStateCommandBuffer)
 
 
-newRenderStateSwapchain :: (MonadIO m) => Renderer -> m RenderStateSwapchain
+newRenderStateSwapchain :: (MonadIO m) => Renderer px -> m RenderStateSwapchain
 newRenderStateSwapchain Renderer {..} = do
     let Environment {..} = rendererEnvironment
     renderStateBase <- newRenderState Renderer {..}
@@ -211,14 +211,14 @@ newRenderStateSwapchain Renderer {..} = do
 
     pure RenderStateSwapchain {..}
 
-freeRenderStateSwapchain :: (MonadIO m) => Renderer -> RenderStateSwapchain -> m ()
+freeRenderStateSwapchain :: (MonadIO m) => Renderer px -> RenderStateSwapchain -> m ()
 freeRenderStateSwapchain Renderer {..} RenderStateSwapchain {..} = do
     let Environment {..} = rendererEnvironment
     Vk.destroySemaphore environmentDevice renderStateImageSemaphore Nothing
     freeRenderState Renderer {..} renderStateBase
 
 
-setRenderStateTargetBase :: (MonadIO m) => Renderer -> RenderState -> Graphics -> Int -> Int -> BaseRenderTarget -> m ()
+setRenderStateTargetBase :: (MonadIO m) => Renderer px -> RenderState -> Graphics -> Int -> Int -> BaseRenderTarget px -> m ()
 setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height BaseRenderTarget {..} = do
     let renderArea = Vk.Rect2D {
             Vk.offset = Vk.Offset2D 0 0,
@@ -326,7 +326,7 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
     unmapTypedBuffer rendererEnvironment renderStateIndex
     unmapTypedBuffer rendererEnvironment renderStateVertex
 
-recordRenderStateStencilCmd :: (MonadIO m) => Renderer -> RenderState -> Vk.Rect2D -> Word32 -> Word32 -> m ()
+recordRenderStateStencilCmd :: (MonadIO m) => Renderer px -> RenderState -> Vk.Rect2D -> Word32 -> Word32 -> m ()
 recordRenderStateStencilCmd Renderer {..} RenderState {..} renderArea indexStart indexCount = do
     Vk.cmdClearAttachments
         renderStateCommandBuffer
@@ -366,7 +366,7 @@ recordRenderStateStencilCmd Renderer {..} RenderState {..} renderArea indexStart
 
     Vk.cmdDrawIndexed renderStateCommandBuffer (3 * indexCount) 1 (3 * indexStart) 0 0
 
-recordRenderStateColorCmd :: (MonadIO m) => Renderer -> RenderState -> Pattern -> Word32 -> m ()
+recordRenderStateColorCmd :: (MonadIO m) => Renderer px -> RenderState -> Pattern -> Word32 -> m ()
 recordRenderStateColorCmd Renderer {..} RenderState {..} pattern patOffset = do
     Vk.cmdBindDescriptorSets
         renderStateCommandBuffer
@@ -405,7 +405,7 @@ recordRenderStateColorCmd Renderer {..} RenderState {..} pattern patOffset = do
 
     Vk.cmdDrawIndexed renderStateCommandBuffer 6 1 0 0 0
 
-renderRenderStateTarget :: (MonadIO m) => Renderer -> RenderState -> Graphics -> RenderTarget -> Maybe Vk.Semaphore -> m (m ())
+renderRenderStateTarget :: (MonadIO m) => Renderer px -> RenderState -> Graphics -> RenderTarget px -> Maybe Vk.Semaphore -> m (m ())
 renderRenderStateTarget Renderer {..} RenderState {..} graphics RenderTarget {..} wait = do
     let Environment {..} = rendererEnvironment
     let Vk.Extent2D {
@@ -438,7 +438,7 @@ renderRenderStateTarget Renderer {..} RenderState {..} graphics RenderTarget {..
 
     pure $ void $ Vk.waitForFences environmentDevice (V.singleton renderStateFence) True maxBound
 
-renderRenderStateTargetSwapchain :: (MonadIO m) => Renderer -> RenderStateSwapchain -> Graphics -> SwapchainRenderTarget -> m (Int, m ())
+renderRenderStateTargetSwapchain :: (MonadIO m) => Renderer px -> RenderStateSwapchain -> Graphics -> SwapchainRenderTarget px -> m (Int, m ())
 renderRenderStateTargetSwapchain Renderer {..} RenderStateSwapchain {..} graphics SwapchainRenderTarget {..} = do
     let Environment {..} = rendererEnvironment
         RenderState {..} = renderStateBase

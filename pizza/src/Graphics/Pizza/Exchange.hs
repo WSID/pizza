@@ -28,7 +28,7 @@ data Exchange a = Exchange {
     exchangeFence :: Vk.Fence
 }
 
-newExchangeSized :: (MonadIO m) => Renderer -> Int -> m (Exchange a)
+newExchangeSized :: (MonadIO m) => Renderer px -> Int -> m (Exchange a)
 newExchangeSized renderer size = do
     let Environment {..} = rendererEnvironment renderer
 
@@ -54,10 +54,10 @@ newExchangeSized renderer size = do
     pure $ Exchange {..}
 
 
-newExchangeNA :: (MonadIO m, Storable a) => Renderer -> Int -> a -> m (Exchange a)
+newExchangeNA :: (MonadIO m, Storable a) => Renderer px -> Int -> a -> m (Exchange a)
 newExchangeNA renderer n a = newExchangeSized renderer (n * sizeOf a)
 
-newExchangeN :: (MonadIO m, Storable a) => Renderer -> Int -> m (Exchange a)
+newExchangeN :: (MonadIO m, Storable a) => Renderer px -> Int -> m (Exchange a)
 newExchangeN renderer n = newExchangeNA renderer n undefined
 
 castExchange :: Exchange a -> Exchange b
@@ -65,7 +65,7 @@ castExchange exchange = exchange {
     exchangeBuffer = castTypedBuffer $ exchangeBuffer exchange
 }
 
-freeExchange :: (MonadIO m) => Renderer -> Exchange a -> m ()
+freeExchange :: (MonadIO m) => Renderer px -> Exchange a -> m ()
 freeExchange renderer exchange = do
     let Environment {..} = rendererEnvironment renderer
 
@@ -77,27 +77,27 @@ freeExchange renderer exchange = do
         (V.singleton $ exchangeCommandBuffer exchange)
 
 
-mapExchange :: (MonadIO m) => Renderer -> Exchange a -> m (Ptr a)
+mapExchange :: (MonadIO m) => Renderer px -> Exchange a -> m (Ptr a)
 mapExchange renderer exchange = mapTypedBuffer (rendererEnvironment renderer) (exchangeBuffer exchange)
 
-unmapExchange :: (MonadIO m) => Renderer -> Exchange a -> m ()
+unmapExchange :: (MonadIO m) => Renderer px -> Exchange a -> m ()
 unmapExchange renderer exchange = unmapTypedBuffer (rendererEnvironment renderer) (exchangeBuffer exchange)
 
-writeExchange1 :: (MonadIO m, Storable a) => Renderer -> Exchange a -> a -> m ()
+writeExchange1 :: (MonadIO m, Storable a) => Renderer px -> Exchange a -> a -> m ()
 writeExchange1 renderer exchange = writeTypedBuffer1 (rendererEnvironment renderer) (exchangeBuffer exchange)
 
-readExchange1 :: (MonadIO m, Storable a) => Renderer -> Exchange a -> m a
+readExchange1 :: (MonadIO m, Storable a) => Renderer px -> Exchange a -> m a
 readExchange1 renderer exchange = readTypedBuffer1 (rendererEnvironment renderer) (exchangeBuffer exchange)
 
-writeExchangeN :: (MonadIO m, Storable a) => Renderer -> Exchange a -> [a] -> m ()
+writeExchangeN :: (MonadIO m, Storable a) => Renderer px -> Exchange a -> [a] -> m ()
 writeExchangeN renderer exchange = writeTypedBufferN (rendererEnvironment renderer) (exchangeBuffer exchange)
 
-readExchangeN :: (MonadIO m, Storable a) => Renderer -> Exchange a -> Int -> m [a]
+readExchangeN :: (MonadIO m, Storable a) => Renderer px -> Exchange a -> Int -> m [a]
 readExchangeN renderer exchange = readTypedBufferN (rendererEnvironment renderer) (exchangeBuffer exchange)
 
 -- This now requires a command buffer write, and wait.
 -- TODO: How to wrap semaphore?
-writeExchangeRenderTarget :: (MonadIO m) => Renderer -> Exchange a -> RenderTarget -> Maybe Vk.Semaphore -> m ()
+writeExchangeRenderTarget :: (MonadIO m) => Renderer px -> Exchange a -> RenderTarget a -> Maybe Vk.Semaphore -> m ()
 writeExchangeRenderTarget renderer Exchange {..} RenderTarget {..} maySem = do
     let Environment {..} = rendererEnvironment renderer
     let Vk.Extent2D width height  = renderTargetSize

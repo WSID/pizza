@@ -26,7 +26,7 @@ import qualified VulkanMemoryAllocator as Vma
 import Graphics.Pizza.Environment
 import Graphics.Pizza.Renderer
 
-data BaseRenderTarget = BaseRenderTarget {
+data BaseRenderTarget px = BaseRenderTarget {
     renderTargetImageView :: Vk.ImageView,
     renderTargetStencil :: Vk.Image,
     renderTargetStencilAlloc :: Vma.Allocation,
@@ -34,21 +34,21 @@ data BaseRenderTarget = BaseRenderTarget {
     renderTargetFramebuffer :: Vk.Framebuffer
 }
 
-data RenderTarget = RenderTarget {
+data RenderTarget px = RenderTarget {
     renderTargetSize :: Vk.Extent2D,
     renderTargetImage :: Vk.Image,
     renderTargetImageAlloc :: Vma.Allocation,
-    renderTargetBase :: BaseRenderTarget
+    renderTargetBase :: BaseRenderTarget px
 }
 
-data SwapchainRenderTarget = SwapchainRenderTarget {
+data SwapchainRenderTarget px = SwapchainRenderTarget {
     renderTargetSize :: Vk.Extent2D,
     renderTargetSwapchain :: Vk.SwapchainKHR,
-    renderTargetBase :: Vector BaseRenderTarget
+    renderTargetBase :: Vector (BaseRenderTarget px)
 }
 
-newBaseRenderTarget :: (MonadIO m) => Renderer -> Vk.Image -> Int -> Int -> Vk.Format -> m BaseRenderTarget
-newBaseRenderTarget Renderer {..} image width height imageFormat = do
+newBaseRenderTarget :: (MonadIO m) => Renderer px -> Vk.Image -> Int -> Int -> m (BaseRenderTarget px)
+newBaseRenderTarget Renderer {..} image width height = do
     let Environment {..} = rendererEnvironment
     renderTargetImageView <- Vk.createImageView
         environmentDevice
@@ -57,7 +57,7 @@ newBaseRenderTarget Renderer {..} image width height imageFormat = do
             Vk.flags = zeroBits,
             Vk.image = image,
             Vk.viewType = Vk.IMAGE_VIEW_TYPE_2D,
-            Vk.format = imageFormat,
+            Vk.format = rendererImageFormat,
             Vk.components = Vk.ComponentMapping
                 Vk.COMPONENT_SWIZZLE_IDENTITY
                 Vk.COMPONENT_SWIZZLE_IDENTITY
@@ -138,7 +138,7 @@ newBaseRenderTarget Renderer {..} image width height imageFormat = do
     pure BaseRenderTarget {..}
 
 
-freeBaseRenderTarget :: (MonadIO m) => Renderer -> BaseRenderTarget -> m ()
+freeBaseRenderTarget :: (MonadIO m) => Renderer px -> BaseRenderTarget px -> m ()
 freeBaseRenderTarget Renderer {..} BaseRenderTarget {..} = do
     let Environment {..} = rendererEnvironment
     Vk.destroyFramebuffer environmentDevice renderTargetFramebuffer Nothing
@@ -146,7 +146,7 @@ freeBaseRenderTarget Renderer {..} BaseRenderTarget {..} = do
     Vma.destroyImage environmentAllocator renderTargetStencil renderTargetStencilAlloc
     Vk.destroyImageView environmentDevice renderTargetImageView Nothing
 
-recordBaseRenderTarget :: (MonadIO m) => Vk.CommandBuffer -> Renderer -> Int -> Int -> BaseRenderTarget -> m r -> m r
+recordBaseRenderTarget :: (MonadIO m) => Vk.CommandBuffer -> Renderer px -> Int -> Int -> BaseRenderTarget px -> m r -> m r
 recordBaseRenderTarget cmdbuf Renderer {..} width height BaseRenderTarget {..} inside = do
     let renderArea = Vk.Rect2D {
         Vk.offset = Vk.Offset2D 0 0,
@@ -182,8 +182,8 @@ recordBaseRenderTarget cmdbuf Renderer {..} width height BaseRenderTarget {..} i
             Vk.SUBPASS_CONTENTS_INLINE
             inside
 
-newRenderTarget :: (MonadIO m) => Renderer -> Int -> Int -> Vk.Format -> m RenderTarget
-newRenderTarget Renderer {..} width height imageFormat = do
+newRenderTarget :: (MonadIO m) => Renderer px -> Int -> Int -> m (RenderTarget px)
+newRenderTarget Renderer {..} width height = do
     let Environment {..} = rendererEnvironment
     let widthw = fromIntegral width
         heightw = fromIntegral height
@@ -195,7 +195,7 @@ newRenderTarget Renderer {..} width height imageFormat = do
             Vk.next = (),
             Vk.flags = zeroBits,
             Vk.imageType = Vk.IMAGE_TYPE_2D,
-            Vk.format = imageFormat,
+            Vk.format = rendererImageFormat,
             Vk.extent = Vk.Extent3D widthw heightw 1,
             Vk.mipLevels = 1,
             Vk.arrayLayers = 1,
@@ -218,17 +218,17 @@ newRenderTarget Renderer {..} width height imageFormat = do
             Vma.priority = 0
         }
 
-    renderTargetBase <- newBaseRenderTarget Renderer {..} renderTargetImage width height imageFormat
+    renderTargetBase <- newBaseRenderTarget Renderer {..} renderTargetImage width height
 
     pure RenderTarget {..}
 
-freeRenderTarget :: (MonadIO m) => Renderer -> RenderTarget -> m ()
+freeRenderTarget :: (MonadIO m) => Renderer px -> RenderTarget px -> m ()
 freeRenderTarget Renderer {..} RenderTarget {..} = do
     let Environment {..} = rendererEnvironment
     freeBaseRenderTarget Renderer {..} renderTargetBase
     Vma.destroyImage environmentAllocator renderTargetImage renderTargetImageAlloc
 
-recordRenderTarget :: (MonadIO m) => Vk.CommandBuffer -> Renderer -> RenderTarget -> m r -> m r
+recordRenderTarget :: (MonadIO m) => Vk.CommandBuffer -> Renderer px -> RenderTarget px -> m r -> m r
 recordRenderTarget cmdbuf renderer RenderTarget {..} =
     recordBaseRenderTarget cmdbuf renderer (fromIntegral width) (fromIntegral height) renderTargetBase
   where
@@ -238,8 +238,8 @@ recordRenderTarget cmdbuf renderer RenderTarget {..} =
     } = renderTargetSize
 
 
-newSwapchainRenderTarget :: (MonadIO m) => Renderer -> Vk.SwapchainKHR -> Int -> Int -> Vk.Format -> m SwapchainRenderTarget
-newSwapchainRenderTarget Renderer {..} renderTargetSwapchain width height imageFormat = do
+newSwapchainRenderTarget :: (MonadIO m) => Renderer px -> Vk.SwapchainKHR -> Int -> Int -> m (SwapchainRenderTarget px)
+newSwapchainRenderTarget Renderer {..} renderTargetSwapchain width height = do
     let Environment {..} = rendererEnvironment
     let widthw = fromIntegral width
         heightw = fromIntegral height
@@ -248,12 +248,12 @@ newSwapchainRenderTarget Renderer {..} renderTargetSwapchain width height imageF
     (_, images) <- Vk.getSwapchainImagesKHR environmentDevice renderTargetSwapchain
 
     renderTargetBase <- traverse
-        (\image -> newBaseRenderTarget Renderer {..} image width height imageFormat)
+        (\image -> newBaseRenderTarget Renderer {..} image width height)
         images
 
     pure SwapchainRenderTarget {..}
 
-freeSwapchainRenderTarget :: (MonadIO m) => Renderer -> SwapchainRenderTarget -> m ()
+freeSwapchainRenderTarget :: (MonadIO m) => Renderer px -> SwapchainRenderTarget px -> m ()
 freeSwapchainRenderTarget Renderer {..} SwapchainRenderTarget {..} =
     traverse_ (freeBaseRenderTarget Renderer {..}) renderTargetBase
 

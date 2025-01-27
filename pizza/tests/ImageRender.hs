@@ -29,11 +29,9 @@ makeRenderedImage graphics = do
     environment <- newBasicEnvironment
     let Environment {..} = environment
 
-    let format = Vk.FORMAT_R8G8B8A8_UNORM
-
     -- Pizzas
-    renderer <- newRenderer environment format Vk.IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
-    renderTarget <- newRenderTarget renderer 200 200 format
+    renderer <- newRenderer environment Vk.IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL :: IO (Renderer (VRGBA (UNorm Word8)))
+    renderTarget <- newRenderTarget renderer 200 200
     renderState <- newRenderState renderer
     exchange <- newExchangeN renderer (200 * 200)
 
@@ -55,4 +53,4 @@ makeRenderedImage graphics = do
 
     freeEnvironment environment
 
-    pure result
+    pure (fmap (fmap getUNorm . unVRGBA) result)

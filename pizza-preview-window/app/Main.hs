@@ -254,12 +254,8 @@ main = do
     surfaceState <- createSurfaceState environment win
     swapchain <- createSwapchain environment surfaceState width height
 
-    let Vk.SurfaceFormatKHR {
-        Vk.format = imageFormat
-    } = surfaceStateFormat surfaceState
-
-    renderer <- Pz.newRenderer environment imageFormat Vk.IMAGE_LAYOUT_PRESENT_SRC_KHR
-    renderTarget <- Pz.newSwapchainRenderTarget renderer swapchain width height imageFormat
+    renderer <- Pz.newRenderer environment Vk.IMAGE_LAYOUT_GENERAL :: IO (Pz.Renderer (Pz.VBGRA (Pz.UNorm Word8)))
+    renderTarget <- Pz.newSwapchainRenderTarget renderer swapchain width height
     renderState <- Pz.newRenderStateSwapchain renderer
 
     keepAlive <- newIORef True

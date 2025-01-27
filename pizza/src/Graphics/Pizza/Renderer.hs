@@ -32,9 +32,14 @@ import qualified Vulkan.Utils.ShaderQQ.GLSL.Shaderc as Vku
 -- pizza
 import Graphics.Pizza.Environment
 import Graphics.Pizza.Internal.TypedBuffer
+import Graphics.Pizza.Format
 
-
-data Renderer = Renderer {
+-- | A renderer context object.
+--
+-- For type `Renderer px`...
+--
+--  px is a pixel format. Typically use `VRGBA (UNorm Word8)` for 8bit format.
+data Renderer px = Renderer {
     -- Unowned reference
     rendererEnvironment :: Environment,
 
@@ -81,9 +86,13 @@ data Renderer = Renderer {
     rendererQuadIndices :: TypedBuffer (V3 Word32)
 }
 
-newRenderer :: (MonadIO m) => Environment -> Vk.Format -> Vk.ImageLayout -> m Renderer
-newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
+newRenderer :: (MonadIO m, Format px) => Environment -> Vk.ImageLayout -> m (Renderer px)
+newRenderer rendererEnvironment rendererImageLayout = newRendererOf rendererEnvironment rendererImageLayout undefined
+
+newRendererOf :: (MonadIO m, Format px) => Environment -> Vk.ImageLayout -> px -> m (Renderer px)
+newRendererOf rendererEnvironment rendererImageLayout px = do
     let Environment {..} = rendererEnvironment
+        rendererImageFormat = formatOf px
 
     Vk.PhysicalDeviceProperties {
         Vk.limits = Vk.PhysicalDeviceLimits {
@@ -362,7 +371,7 @@ newRenderer rendererEnvironment rendererImageFormat rendererImageLayout = do
     pure Renderer {..}
 
 
-freeRenderer :: (MonadIO m) => Renderer -> m ()
+freeRenderer :: (MonadIO m) => Renderer px -> m ()
 freeRenderer Renderer {..} = do
     let Environment {..} = rendererEnvironment
     freeTypedBuffer rendererEnvironment rendererQuadIndices
