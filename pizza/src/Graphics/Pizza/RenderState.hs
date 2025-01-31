@@ -405,13 +405,13 @@ recordRenderStateColorCmd Renderer {..} RenderState {..} pattern patOffset = do
 
     Vk.cmdDrawIndexed renderStateCommandBuffer 6 1 0 0 0
 
-renderRenderStateTarget :: (MonadIO m) => Renderer px -> RenderState -> Graphics -> RenderTarget px -> Maybe Vk.Semaphore -> m (m ())
-renderRenderStateTarget Renderer {..} RenderState {..} graphics RenderTarget {..} wait = do
+renderRenderStateTargetBase :: (MonadIO m) => Renderer px -> RenderState -> Graphics -> BaseRenderTarget px -> Vk.Extent2D -> Maybe Vk.Semaphore -> m (m ())
+renderRenderStateTargetBase Renderer {..} RenderState {..} graphics BaseRenderTarget {..} size wait = do
     let Environment {..} = rendererEnvironment
     let Vk.Extent2D {
         Vk.width = width,
         Vk.height = height
-    } = renderTargetSize
+    } = size
 
     setRenderStateTargetBase
         Renderer {..}
@@ -419,7 +419,7 @@ renderRenderStateTarget Renderer {..} RenderState {..} graphics RenderTarget {..
         graphics
         (fromIntegral width)
         (fromIntegral height)
-        renderTargetBase
+        BaseRenderTarget {..}
 
     Vk.resetFences environmentDevice (V.singleton renderStateFence)
 
@@ -438,14 +438,14 @@ renderRenderStateTarget Renderer {..} RenderState {..} graphics RenderTarget {..
 
     pure $ void $ Vk.waitForFences environmentDevice (V.singleton renderStateFence) True maxBound
 
+renderRenderStateTarget :: (MonadIO m) => Renderer px -> RenderState -> Graphics -> RenderTarget px -> Maybe Vk.Semaphore -> m (m ())
+renderRenderStateTarget Renderer {..} RenderState {..} graphics RenderTarget {..} =
+    renderRenderStateTargetBase Renderer {..} RenderState {..} graphics renderTargetBase renderTargetSize
+
 renderRenderStateTargetSwapchain :: (MonadIO m) => Renderer px -> RenderStateSwapchain -> Graphics -> SwapchainRenderTarget px -> m (Int, m ())
 renderRenderStateTargetSwapchain Renderer {..} RenderStateSwapchain {..} graphics SwapchainRenderTarget {..} = do
     let Environment {..} = rendererEnvironment
         RenderState {..} = renderStateBase
-    let Vk.Extent2D {
-        Vk.width = width,
-        Vk.height = height
-    } = renderTargetSize
 
     (_, indexw) <- Vk.acquireNextImageKHR
         environmentDevice
@@ -456,24 +456,13 @@ renderRenderStateTargetSwapchain Renderer {..} RenderStateSwapchain {..} graphic
 
     let index = fromIntegral indexw
 
-    setRenderStateTargetBase
+    waitOp <- renderRenderStateTargetBase
         Renderer {..}
-        RenderState {..}
+        renderStateBase
         graphics
-        (fromIntegral width) (fromIntegral height)
         (renderTargetBase ! index)
-
-
-    Vk.resetFences environmentDevice (V.singleton renderStateFence)
-
-    Vk.queueSubmit environmentGraphicsQueue
-        (V.singleton $ Vk.SomeStruct Vk.zero {
-            Vk.waitSemaphores = V.singleton renderStateImageSemaphore,
-            Vk.waitDstStageMask = V.singleton Vk.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            Vk.commandBuffers = V.singleton $ Vk.commandBufferHandle renderStateCommandBuffer,
-            Vk.signalSemaphores = V.singleton renderStateSemaphore
-        } )
-        renderStateFence
+        renderTargetSize
+        (Just renderStateImageSemaphore)
 
     _ <- Vk.queuePresentKHR
         environmentGraphicsQueue
@@ -482,8 +471,6 @@ renderRenderStateTargetSwapchain Renderer {..} RenderStateSwapchain {..} graphic
             Vk.swapchains = V.singleton renderTargetSwapchain,
             Vk.imageIndices = V.singleton indexw
         }
-
-    let waitOp = void $ Vk.waitForFences environmentDevice (V.singleton renderStateFence) True maxBound
 
     pure (index, waitOp)
 
