@@ -71,8 +71,7 @@ censorShaping f (Shaping av ar) = Shaping av (f ar)
 
 
 data PaintingEnv = PaintingEnv {
-        paintingTransform :: Transform,
-        paintingPattern :: Pattern,
+        paintingAttributes :: DrawAttributes,
         paintingThickness :: Float,
         paintingEndCaps :: (StrokeCap, StrokeCap),
         paintingJoin :: StrokeJoin,
@@ -81,8 +80,10 @@ data PaintingEnv = PaintingEnv {
 
 defPaintingEnv :: PaintingEnv
 defPaintingEnv = PaintingEnv {
-        paintingTransform = mempty,
-        paintingPattern = PatternSolid (V4 1 1 1 1),
+        paintingAttributes = DrawAttributes {
+            drawPattern = PatternSolid (V4 1 1 1 1),
+            drawTransform = mempty
+        },
         paintingThickness = 1.0,
         paintingEndCaps = (strokeCapNone, strokeCapNone),
         paintingJoin = strokeJoinMiter,
@@ -120,8 +121,14 @@ askPaintingEnv = Painting $ \env -> (env, mempty)
 asksPaintingEnv :: (PaintingEnv -> a) -> Painting a
 asksPaintingEnv f = fmap f askPaintingEnv
 
+asksPaintingAttribtutes :: (DrawAttributes -> a) -> Painting a
+asksPaintingAttribtutes f = asksPaintingEnv (f . paintingAttributes)
+
+askTransform :: Painting Transform
+askTransform = asksPaintingAttribtutes drawTransform
+
 askPattern :: Painting Pattern
-askPattern = asksPaintingEnv paintingPattern
+askPattern = asksPaintingAttribtutes drawPattern
 
 askThickness :: Painting Float
 askThickness = asksPaintingEnv paintingThickness
@@ -139,11 +146,14 @@ askDashPattern = asksPaintingEnv paintingDashPattern
 localPaintingEnv :: (PaintingEnv -> PaintingEnv) -> Painting a -> Painting a
 localPaintingEnv f (Painting p) = Painting (p . f)
 
+localPaintingAttributes :: (DrawAttributes -> DrawAttributes) -> Painting a -> Painting a
+localPaintingAttributes f = localPaintingEnv (\env -> env { paintingAttributes = f $ paintingAttributes env } ) 
+
 localTransform :: (Transform -> Transform) -> Painting a -> Painting a
-localTransform f = localPaintingEnv (\env -> env { paintingTransform = f $ paintingTransform env } )
+localTransform f = localPaintingAttributes (\attr -> attr { drawTransform = f $ drawTransform attr } )
 
 localPattern :: (Pattern -> Pattern) -> Painting a -> Painting a
-localPattern f = localPaintingEnv (\env -> env { paintingPattern = f $ paintingPattern env } )
+localPattern f = localPaintingAttributes (\attr -> attr { drawPattern = f $ drawPattern attr } )
 
 localThickness :: (Float -> Float) -> Painting a -> Painting a
 localThickness f = localPaintingEnv (\env -> env { paintingThickness = f $ paintingThickness env } )
@@ -165,7 +175,7 @@ paint :: Graphics -> Painting ()
 paint g = Painting $ const ((), g)
 
 paintFill :: [Path] -> Painting ()
-paintFill shape = Painting $ \env -> ((), Graphics [DrawShape shape (paintingPattern env) (paintingTransform env)])
+paintFill shape = Painting $ \env -> ((), Graphics [DrawShape shape (paintingAttributes env)])
 
 paintStrokeOpen :: Path -> Painting ()
 paintStrokeOpen path = Painting $ \env -> (
@@ -178,7 +188,7 @@ paintStrokeOpen path = Painting $ \env -> (
                     Just dashPattern -> dashStroke dashPattern option ends path
                     Nothing -> stroke option ends path
 
-            in DrawShape shape (paintingPattern env) (paintingTransform env)
+            in DrawShape shape (paintingAttributes env)
         ]
     )
 
@@ -192,7 +202,7 @@ paintStrokeClose path = Painting $ \env -> (
                     Just dashPattern -> dashStroke dashPattern strokeOption StrokeClose path
                     Nothing -> stroke strokeOption StrokeClose path
 
-            in DrawShape shape (paintingPattern env) (paintingTransform env)
+            in DrawShape shape (paintingAttributes env)
         ]
     )
 
@@ -211,7 +221,7 @@ censorPainting f (Painting a) = Painting $ \env -> let (av, ar) = a env in (av, 
 
 
 paintFillShaping :: Shaping a -> Painting a
-paintFillShaping (Shaping a r) = Painting $ \env -> (a, Graphics [DrawShape r (paintingPattern env) (paintingTransform env)])
+paintFillShaping (Shaping a r) = Painting $ \env -> (a, Graphics [DrawShape r (paintingAttributes env)])
 
 paintStrokeOpenPathing :: Pathing a -> Painting a
 paintStrokeOpenPathing (Pathing a r) = a <$ paintStrokeOpen r

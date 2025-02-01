@@ -5,6 +5,7 @@ module Graphics.Pizza.Graphic (
     module Graphics.Pizza.Graphic.Stroke,
     module Graphics.Pizza.Graphic.Transform,
 
+    DrawAttributes ( .. ),
     DrawItem ( .. ),
     Graphics ( .. ),
     Pattern ( .. ),
@@ -21,10 +22,18 @@ import Graphics.Pizza.Graphic.Stroke
 import Graphics.Pizza.Graphic.Path
 import Graphics.Pizza.Graphic.Transform
 
-data DrawItem = DrawShape [Path] Pattern Transform
+data DrawAttributes = DrawAttributes {
+    drawPattern :: Pattern,
+    drawTransform :: Transform
+}
+
+instance Transformable DrawAttributes where 
+    transform tr attr = attr { drawTransform = transform tr $ drawTransform attr }
+
+data DrawItem = DrawShape [Path] DrawAttributes
 
 instance Transformable DrawItem where
-    transform tr (DrawShape paths pat trs) = DrawShape paths pat (transform tr trs)
+    transform tr (DrawShape paths attr) = DrawShape paths (transform tr attr)
 
 newtype Graphics = Graphics [DrawItem]
 

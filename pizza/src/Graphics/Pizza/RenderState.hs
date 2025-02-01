@@ -252,7 +252,11 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
             pure (pathViend, pathIi + pathVcount - 2)
 
     let appendDrawItem :: (Int, Int, Int) -> DrawItem -> IO (Int, Int, Int)
-        appendDrawItem (vi, ii, uoff) (DrawShape paths pattern trans) = do
+        appendDrawItem (vi, ii, uoff) (DrawShape paths attrs) = do
+            let DrawAttributes {
+                    drawPattern = pattern,
+                    drawTransform = trans
+                } = attrs
             (nvi, nii) <- foldlM appendPath (vi, ii) (transform trans <$> paths)
 
             recordRenderStateStencilCmd
