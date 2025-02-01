@@ -7,7 +7,7 @@ module Graphics.Pizza.Environment where
 import Control.Monad.IO.Class
 
 import Data.Bits
-import Data.Traversable
+import Data.List
 import Data.Word
 
 import Foreign.Ptr
@@ -29,6 +29,22 @@ import qualified Vulkan.Zero as Vk
 import qualified VulkanMemoryAllocator as Vma
 
 
+-- Constants
+
+-- | A set of required VkInstance extensions.
+--
+-- If you need to make VkInstance for your own, include this to create new instance.
+requiredInstanceExtensions :: [BSC.ByteString]
+requiredInstanceExtensions = [
+        Vk.KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME
+    ]
+
+requiredDeviceExtensions :: [BSC.ByteString]
+requiredDeviceExtensions = [
+        Vk.EXT_BLEND_OPERATION_ADVANCED_EXTENSION_NAME,
+        Vk.EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME
+    ]
+
 data Environment = Environment {
     environmentInst :: Vk.Instance,
     environmentPhysDevice :: Vk.PhysicalDevice,
@@ -41,7 +57,7 @@ data Environment = Environment {
 data EnvOptSimple = EnvOptSimple {
     envOptInstExtensions :: [BSC.ByteString],
     envOptInstLayers :: [BSC.ByteString],
-    envOptPickDevice :: Vk.Instance -> Vector Vk.PhysicalDevice -> IO (Vk.PhysicalDevice, Word32),
+    envOptPickDevice :: Vk.Instance -> Vector BSC.ByteString -> Vector Vk.PhysicalDevice -> IO (Vk.PhysicalDevice, Word32),
     envOptDevExtensions :: [BSC.ByteString],
     envOptDevLayers :: [BSC.ByteString],
     envOptAppName :: Maybe BSC.ByteString,
@@ -59,20 +75,27 @@ defaultEnvOptSimple = EnvOptSimple {
     envOptAppVersion = 0
 }
 
-defaultPickDevice :: Vk.Instance -> Vector Vk.PhysicalDevice -> IO (Vk.PhysicalDevice, Word32)
-defaultPickDevice _ physDevices = do
-    physDeviceGraphicsQFIs <- for physDevices $ \physDevice -> do
-        qprops <- Vk.getPhysicalDeviceQueueFamilyProperties physDevice
 
-        let queueCriteria Vk.QueueFamilyProperties {..} =
-                queueFlags .&. Vk.QUEUE_GRAPHICS_BIT /= zeroBits
+defaultDeviceSuitable ::  Vector BSC.ByteString -> Vk.PhysicalDevice -> IO (Maybe (Vk.PhysicalDevice, Word32))
+defaultDeviceSuitable reqExts physDevice = do
+        (_, devExtProps) <- Vk.enumerateDeviceExtensionProperties physDevice Nothing
+        let devExts = fmap (\Vk.ExtensionProperties { Vk.extensionName = name} -> name) devExtProps
+        let missingExts = V.filter (not . (`elem` devExts)) reqExts
+        if null missingExts then do
+            qprops <- Vk.getPhysicalDeviceQueueFamilyProperties physDevice
 
-        pure $ fromIntegral <$> V.findIndex queueCriteria qprops
+            let queueCriteria Vk.QueueFamilyProperties {..} =
+                    queueFlags .&. Vk.QUEUE_GRAPHICS_BIT /= zeroBits
 
-    pure
-        $ V.head
-        $ V.mapMaybe (\(a, b) -> (,) <$> Just a <*> b)
-        $ V.zip physDevices physDeviceGraphicsQFIs
+
+            pure ((\a -> (physDevice, a)) . fromIntegral <$> V.findIndex queueCriteria qprops)
+        else do
+            pure Nothing
+
+defaultPickDevice :: Vk.Instance -> Vector BSC.ByteString -> Vector Vk.PhysicalDevice -> IO (Vk.PhysicalDevice, Word32)
+defaultPickDevice _ reqExts physDevices = do
+    physDeviceGraphicsQFIs <- V.mapMaybeM (defaultDeviceSuitable reqExts) physDevices
+    pure $ V.head physDeviceGraphicsQFIs
 
 
 -- | Create a basic environment for vector graphics.
@@ -81,6 +104,10 @@ newBasicEnvironment = newEnvironmentSimple defaultEnvOptSimple
 
 newEnvironmentSimple :: MonadIO m => EnvOptSimple -> m Environment
 newEnvironmentSimple EnvOptSimple {..} = do
+
+    let instExtensions = V.fromList (requiredInstanceExtensions `union` envOptInstExtensions)
+    let devExtensions = V.fromList (requiredDeviceExtensions `union` envOptDevExtensions)
+
     environmentInst <- Vk.createInstance Vk.zero {
         Vk.applicationInfo = Just Vk.ApplicationInfo {
             Vk.applicationName = envOptAppName,
@@ -90,13 +117,13 @@ newEnvironmentSimple EnvOptSimple {..} = do
             Vk.apiVersion = Vk.API_VERSION_1_0
         },
         Vk.enabledLayerNames = V.fromList envOptInstLayers,
-        Vk.enabledExtensionNames = V.fromList envOptInstExtensions
+        Vk.enabledExtensionNames = instExtensions
     } Nothing
 
     (_, physDevices) <- Vk.enumeratePhysicalDevices environmentInst
 
     (environmentPhysDevice, environmentGraphicsQFI) <- liftIO
-        $ envOptPickDevice environmentInst physDevices
+        $ envOptPickDevice environmentInst devExtensions physDevices
 
     environmentDevice <- Vk.createDevice
         environmentPhysDevice
@@ -106,7 +133,7 @@ newEnvironmentSimple EnvOptSimple {..} = do
                 Vk.queuePriorities = V.singleton 1.0
             },
             Vk.enabledLayerNames = V.fromList envOptDevLayers,
-            Vk.enabledExtensionNames = V.fromList envOptDevExtensions
+            Vk.enabledExtensionNames = devExtensions
         }
         Nothing
 

@@ -74,8 +74,8 @@ deviceSelection inst device = do
             devSelectionGraphicQueueFamilyIndex = fst $ V.head graphicsQueueFamilies
         }
 
-pickDevice :: Vk.Instance -> Vector Vk.PhysicalDevice -> IO (Vk.PhysicalDevice, Word32)
-pickDevice inst pdevices = do
+pickDevice :: Vk.Instance -> Vector BSC.ByteString -> Vector Vk.PhysicalDevice -> IO (Vk.PhysicalDevice, Word32)
+pickDevice inst reqExts pdevices = do
     
     pdevicesWithScore <- flip V.mapMaybeM pdevices $ \pdevice -> do
          selection <- deviceSelection inst pdevice
