@@ -82,7 +82,9 @@ defPaintingEnv :: PaintingEnv
 defPaintingEnv = PaintingEnv {
         paintingAttributes = DrawAttributes {
             drawPattern = PatternSolid (V4 1 1 1 1),
-            drawTransform = mempty
+            drawTransform = mempty,
+            drawBlend = BlendNormal,
+            drawOpacity = 1.0
         },
         paintingThickness = 1.0,
         paintingEndCaps = (strokeCapNone, strokeCapNone),
@@ -130,6 +132,12 @@ askTransform = asksPaintingAttribtutes drawTransform
 askPattern :: Painting Pattern
 askPattern = asksPaintingAttribtutes drawPattern
 
+askBlend :: Painting Blend
+askBlend = asksPaintingAttribtutes drawBlend
+
+askOpacity :: Painting Float
+askOpacity = asksPaintingAttribtutes drawOpacity
+
 askThickness :: Painting Float
 askThickness = asksPaintingEnv paintingThickness
 
@@ -154,6 +162,12 @@ localTransform f = localPaintingAttributes (\attr -> attr { drawTransform = f $ 
 
 localPattern :: (Pattern -> Pattern) -> Painting a -> Painting a
 localPattern f = localPaintingAttributes (\attr -> attr { drawPattern = f $ drawPattern attr } )
+
+localBlend :: (Blend -> Blend) -> Painting a -> Painting a
+localBlend f = localPaintingAttributes (\attr -> attr { drawBlend = f $ drawBlend attr} )
+
+localOpacity :: (Float -> Float) -> Painting a -> Painting a
+localOpacity f = localPaintingAttributes (\attr -> attr { drawOpacity = f $ drawOpacity attr } )
 
 localThickness :: (Float -> Float) -> Painting a -> Painting a
 localThickness f = localPaintingEnv (\env -> env { paintingThickness = f $ paintingThickness env } )

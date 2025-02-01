@@ -50,36 +50,43 @@ data SurfaceState = SurfaceState {
     surfaceStateFormat :: Vk.SurfaceFormatKHR
 }
 
-deviceSelection :: Vk.Instance -> Vk.PhysicalDevice -> IO (Maybe DeviceSelection)
-deviceSelection inst device = do
+deviceSelection :: Vk.Instance -> Vector BSC.ByteString -> Vk.PhysicalDevice -> IO (Maybe DeviceSelection)
+deviceSelection inst reqExts device = do
     -- Device
     _ <- Vk.getPhysicalDeviceProperties device -- Currently we don't check this anyway.
 
-    qprops <- Vk.getPhysicalDeviceQueueFamilyProperties device
-    let iqprops = V.indexed qprops
+    hasExts <- Pz.checkDeviceExtensions reqExts device
+    hasColorBlendEquation <- Pz.checkExtendedDynamicState3Features device
 
-    graphicsQueueFamilies <- iqprops &
-            V.filterM (\(i, prop) -> do
-                let isGraphicQueue = Vk.queueFlags prop .&. Vk.QUEUE_GRAPHICS_BIT /= zeroBits
-                hasPresentation <- GLFW.getPhysicalDevicePresentationSupport
-                    (Vk.instanceHandle inst)
-                    (Vk.physicalDeviceHandle device)
-                    (fromIntegral i)
-                pure (isGraphicQueue && hasPresentation)
-            )
+    if hasExts && hasColorBlendEquation then do
 
-    pure $ if null graphicsQueueFamilies then Nothing
-        else Just $ DeviceSelection {
-            devSelectionScore = 1,
-            devSelectionGraphicQueueFamilyIndex = fst $ V.head graphicsQueueFamilies
-        }
+        qprops <- Vk.getPhysicalDeviceQueueFamilyProperties device
+        let iqprops = V.indexed qprops
+
+        graphicsQueueFamilies <- iqprops &
+                V.filterM (\(i, prop) -> do
+                    let isGraphicQueue = Vk.queueFlags prop .&. Vk.QUEUE_GRAPHICS_BIT /= zeroBits
+                    hasPresentation <- GLFW.getPhysicalDevicePresentationSupport
+                        (Vk.instanceHandle inst)
+                        (Vk.physicalDeviceHandle device)
+                        (fromIntegral i)
+                    pure (isGraphicQueue && hasPresentation)
+                )
+
+        pure $ if null graphicsQueueFamilies then Nothing
+            else Just $ DeviceSelection {
+                devSelectionScore = 1,
+                devSelectionGraphicQueueFamilyIndex = fst $ V.head graphicsQueueFamilies
+            }
+    
+    else do
+        pure Nothing
 
 pickDevice :: Vk.Instance -> Vector BSC.ByteString -> Vector Vk.PhysicalDevice -> IO (Vk.PhysicalDevice, Word32)
 pickDevice inst reqExts pdevices = do
-    
     pdevicesWithScore <- flip V.mapMaybeM pdevices $ \pdevice -> do
-         selection <- deviceSelection inst pdevice
-         pure $ fmap (\s -> (s, pdevice)) selection
+        selection <- deviceSelection inst reqExts pdevice
+        pure $ fmap (\s -> (s, pdevice)) selection
 
     when (null pdevicesWithScore) $ die "No suitable device!"
 
@@ -184,25 +191,26 @@ makeGraphic time = let env = Pz.defPaintingEnv { Pz.paintingThickness = 10 }
 
         Pz.localTransform (Pz.transform (Pz.fromPose (V2 (-200) 100) 0 (V2 1 1))) $ do
             Pz.localPattern (const pattern1) $ do
-                Pz.paintFillShaping $ do
-                    Pz.shapingPathing $ do
-                        Pz.pathingCurve $ Pz.bezier
-                            (V2 0 200)
-                            [ V2 0 (0 - animValue1), V2 400 (400 + animValue1) ]
-                            (V2 400 200)
+                Pz.localOpacity (const (abs (sin theta))) $ do     
+                    Pz.paintFillShaping $ do
+                        Pz.shapingPathing $ do
+                            Pz.pathingCurve $ Pz.bezier
+                                (V2 0 200)
+                                [ V2 0 (0 - animValue1), V2 400 (400 + animValue1) ]
+                                (V2 400 200)
 
-                        Pz.pathingCurve $ Pz.arc
-                            (V2 (300 + animValue2) 200)
-                            (100 - animValue2)
-                            0
-                            (negate pi)
+                            Pz.pathingCurve $ Pz.arc
+                                (V2 (300 + animValue2) 200)
+                                (100 - animValue2)
+                                0
+                                (negate pi)
 
-                        Pz.pathingCurve $ Pz.arc
-                            (V2 (100 + animValue2) 200)
-                            (100 + animValue2)
-                            0
-                            pi
-                    Pz.shapingPath () $ Pz.circle (V2 200 200) (100 + animValue2)
+                            Pz.pathingCurve $ Pz.arc
+                                (V2 (100 + animValue2) 200)
+                                (100 + animValue2)
+                                0
+                                pi
+                        Pz.shapingPath () $ Pz.circle (V2 200 200) (100 + animValue2)
 
         -- Shape 2
         let pattern2 = Pz.PatternLinear
@@ -219,14 +227,15 @@ makeGraphic time = let env = Pz.defPaintingEnv { Pz.paintingThickness = 10 }
                         Pz.pathingCurve $ Pz.arc (V2 100 100) 50 (pi * (0.5)) (pi * (1.5))
 
         -- Shape 3
-        let pattern3 = Pz.PatternSolid (V4 1 1 1 1)
+        let pattern3 = Pz.PatternSolid (V4 0.5 0.5 0.5 1)
 
         Pz.localTransform (Pz.translate (V2 0 200)) $ do
             Pz.localPattern (const pattern3) $ do
                 Pz.localDashPattern (const $ Just (Pz.DashPattern True (50 + 50 * sin theta : cycle [50, 50, 50, 50]))) $ do
-                    Pz.paintStrokeClosePathing $ do
-                        Pz.pathingCurve $ Pz.arc (V2 300 100) 50 (pi * (-0.5)) (pi * (0.5))
-                        Pz.pathingCurve $ Pz.arc (V2 100 100) 50 (pi * (0.5)) (pi * (1.5))
+                    Pz.localBlend (const Pz.BlendDifference) $ do 
+                        Pz.paintStrokeClosePathing $ do
+                            Pz.pathingCurve $ Pz.arc (V2 300 100) 50 (pi * (-0.5)) (pi * (0.5))
+                            Pz.pathingCurve $ Pz.arc (V2 100 100) 50 (pi * (0.5)) (pi * (1.5))
 
 
 main :: IO ()

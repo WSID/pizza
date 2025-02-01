@@ -255,7 +255,9 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
         appendDrawItem (vi, ii, uoff) (DrawShape paths attrs) = do
             let DrawAttributes {
                     drawPattern = pattern,
-                    drawTransform = trans
+                    drawTransform = trans,
+                    drawBlend = blend,
+                    drawOpacity = opacity
                 } = attrs
             (nvi, nii) <- foldlM appendPath (vi, ii) (transform trans <$> paths)
 
@@ -266,7 +268,7 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
                 (fromIntegral ii)
                 (fromIntegral (nii - ii))
 
-            case pattern of
+            case applyOpacity opacity pattern of
                 PatternSolid color -> pokeByteOff uptr uoff color
                 PatternLinear ps pe cs ce -> pokeByteOff uptr uoff (PreparationLinear ps pe cs ce)
                 PatternRadial ps r cs ce -> pokeByteOff uptr uoff (PreparationRadial ps r cs ce)
@@ -281,6 +283,7 @@ setRenderStateTargetBase Renderer {..} RenderState {..} graphics width height Ba
                 Renderer {..}
                 RenderState {..}
                 pattern
+                blend
                 (fromIntegral uoff)
 
             pure (nvi, nii, uoff + patOffset)
@@ -370,8 +373,8 @@ recordRenderStateStencilCmd Renderer {..} RenderState {..} renderArea indexStart
 
     Vk.cmdDrawIndexed renderStateCommandBuffer (3 * indexCount) 1 (3 * indexStart) 0 0
 
-recordRenderStateColorCmd :: (MonadIO m) => Renderer px -> RenderState -> Pattern -> Word32 -> m ()
-recordRenderStateColorCmd Renderer {..} RenderState {..} pattern patOffset = do
+recordRenderStateColorCmd :: (MonadIO m) => Renderer px -> RenderState -> Pattern -> Blend -> Word32 -> m ()
+recordRenderStateColorCmd Renderer {..} RenderState {..} pattern blend patOffset = do
     Vk.cmdBindDescriptorSets
         renderStateCommandBuffer
         Vk.PIPELINE_BIND_POINT_GRAPHICS
@@ -406,6 +409,11 @@ recordRenderStateColorCmd Renderer {..} RenderState {..} pattern patOffset = do
         1
         (V.singleton renderStatePatternDS)
         (V.fromList [patOffset, patOffset])
+    
+    Vk.cmdSetColorBlendAdvancedEXT
+        renderStateCommandBuffer
+        0
+        (V.singleton $ blendToBlendState blend)
 
     Vk.cmdDrawIndexed renderStateCommandBuffer 6 1 0 0 0
 
@@ -483,5 +491,29 @@ fanIndices :: [a] -> [V3 a]
 fanIndices (f: s: r) = zipWith (V3 f) (s : r) r
 fanIndices _ = []
 
+blendToBlendState :: Blend -> Vk.ColorBlendAdvancedEXT
+blendToBlendState blend = Vk.ColorBlendAdvancedEXT {
+    Vk.advancedBlendOp = blendToBlendOp blend,
+    Vk.srcPremultiplied = False,
+    Vk.dstPremultiplied = False,
+    Vk.blendOverlap = Vk.BLEND_OVERLAP_UNCORRELATED_EXT,
+    Vk.clampResults = False
+}
 
-
+blendToBlendOp :: Blend -> Vk.BlendOp
+blendToBlendOp BlendNormal = Vk.BLEND_OP_SRC_OVER_EXT
+blendToBlendOp BlendMultiply = Vk.BLEND_OP_MULTIPLY_EXT
+blendToBlendOp BlendScreen = Vk.BLEND_OP_SCREEN_EXT
+blendToBlendOp BlendOverlay = Vk.BLEND_OP_OVERLAY_EXT
+blendToBlendOp BlendDarken = Vk.BLEND_OP_DARKEN_EXT
+blendToBlendOp BlendLighten = Vk.BLEND_OP_LIGHTEN_EXT
+blendToBlendOp BlendColorDodge = Vk.BLEND_OP_COLORDODGE_EXT
+blendToBlendOp BlendColorBurn = Vk.BLEND_OP_COLORBURN_EXT
+blendToBlendOp BlendHardLight = Vk.BLEND_OP_HARDLIGHT_EXT
+blendToBlendOp BlendSoftLight = Vk.BLEND_OP_SOFTLIGHT_EXT
+blendToBlendOp BlendDifference = Vk.BLEND_OP_DIFFERENCE_EXT
+blendToBlendOp BlendExclusion = Vk.BLEND_OP_EXCLUSION_EXT
+blendToBlendOp BlendHue = Vk.BLEND_OP_HSL_HUE_EXT
+blendToBlendOp BlendSaturation = Vk.BLEND_OP_HSL_SATURATION_EXT
+blendToBlendOp BlendColor = Vk.BLEND_OP_HSL_COLOR_EXT
+blendToBlendOp BlendLuminosity = Vk.BLEND_OP_HSL_LUMINOSITY_EXT

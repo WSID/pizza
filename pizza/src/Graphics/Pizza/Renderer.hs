@@ -574,7 +574,7 @@ basePatternPipelineCreateInfo pipelineLayout renderPass vertModule fragModule = 
                         Vk.COLOR_COMPONENT_G_BIT .|.
                         Vk.COLOR_COMPONENT_B_BIT .|.
                         Vk.COLOR_COMPONENT_A_BIT,
-                    Vk.blendEnable = False
+                    Vk.blendEnable = True
                 }
             ]
         },
@@ -582,7 +582,8 @@ basePatternPipelineCreateInfo pipelineLayout renderPass vertModule fragModule = 
         Vk.dynamicState = Just Vk.zero {
             Vk.dynamicStates = V.fromList [
                 Vk.DYNAMIC_STATE_VIEWPORT,
-                Vk.DYNAMIC_STATE_SCISSOR
+                Vk.DYNAMIC_STATE_SCISSOR,
+                Vk.DYNAMIC_STATE_COLOR_BLEND_ADVANCED_EXT
             ]
         },
 

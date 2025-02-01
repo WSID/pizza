@@ -5,10 +5,13 @@ module Graphics.Pizza.Graphic (
     module Graphics.Pizza.Graphic.Stroke,
     module Graphics.Pizza.Graphic.Transform,
 
+    Blend ( .. ),
     DrawAttributes ( .. ),
     DrawItem ( .. ),
     Graphics ( .. ),
     Pattern ( .. ),
+
+    applyOpacity,
 
     dashStroke
 ) where
@@ -22,9 +25,29 @@ import Graphics.Pizza.Graphic.Stroke
 import Graphics.Pizza.Graphic.Path
 import Graphics.Pizza.Graphic.Transform
 
+data Blend =
+    BlendNormal |
+    BlendMultiply |
+    BlendScreen |
+    BlendOverlay |
+    BlendDarken |
+    BlendLighten |
+    BlendColorDodge |
+    BlendColorBurn |
+    BlendHardLight |
+    BlendSoftLight |
+    BlendDifference |
+    BlendExclusion |
+    BlendHue |
+    BlendSaturation |
+    BlendColor |
+    BlendLuminosity
+
 data DrawAttributes = DrawAttributes {
     drawPattern :: Pattern,
-    drawTransform :: Transform
+    drawTransform :: Transform,
+    drawBlend :: Blend,
+    drawOpacity :: Float
 }
 
 instance Transformable DrawAttributes where 
@@ -50,6 +73,14 @@ data Pattern =
     PatternSolid (V4 Float) |
     PatternLinear (V2 Float) (V2 Float) (V4 Float) (V4 Float) |
     PatternRadial (V2 Float) Float (V4 Float) (V4 Float)
+
+applyOpacityV :: Float -> V4 Float -> V4 Float
+applyOpacityV opacity (V4 r g b a) = V4 r g b (a * opacity)
+
+applyOpacity :: Float -> Pattern -> Pattern
+applyOpacity opacity (PatternSolid c) = PatternSolid (applyOpacityV opacity c)
+applyOpacity opacity (PatternLinear start end sc ec) = PatternLinear start end (applyOpacityV opacity sc) (applyOpacityV opacity ec)
+applyOpacity opacity (PatternRadial center radius sc ec) = PatternRadial center radius (applyOpacityV opacity sc) (applyOpacityV opacity ec)
 
 
 dashStroke :: DashPattern -> StrokeOption -> StrokeEnd -> Path -> [Path]

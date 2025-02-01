@@ -400,7 +400,12 @@ checkImages a b = do
 
 testPatterns :: Pattern -> Assertion
 testPatterns pattern = do
-    let attrs = DrawAttributes pattern mempty
+    let attrs = DrawAttributes {
+        drawPattern = pattern,
+        drawTransform = mempty,
+        drawBlend = BlendNormal,
+        drawOpacity = 1.0
+    }
     let graphics = Graphics [ DrawShape [pathFull] attrs]
     actual <- makeRenderedImage graphics
     let expected = makeExpectedImage pattern
@@ -408,7 +413,12 @@ testPatterns pattern = do
 
 testPath :: [Graphics.Pizza.Path] -> [Bool] -> Assertion
 testPath paths mask = do
-    let attrs = DrawAttributes (PatternSolid (V4 1 1 1 1)) mempty
+    let attrs = DrawAttributes {
+        drawPattern = PatternSolid (V4 1 1 1 1),
+        drawTransform = mempty,
+        drawBlend = BlendNormal,
+        drawOpacity = 1.0
+    }
     let graphics = Graphics [ DrawShape paths attrs ]
     actual <- makeRenderedImage graphics
     let expected = bool (V4 0 0 0 255) (V4 255 255 255 255) <$> mask

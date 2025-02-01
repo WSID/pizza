@@ -1,6 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module Graphics.Pizza.Environment where
 
@@ -21,6 +22,7 @@ import qualified Data.ByteString.Char8 as BSC
 
 -- vulkan
 import qualified Vulkan as Vk
+import Vulkan.CStruct.Extends (pattern (::&), pattern (:&))
 import qualified Vulkan.CStruct.Extends as Vk
 import qualified Vulkan.Dynamic as Vk
 import qualified Vulkan.Zero as Vk
@@ -75,22 +77,37 @@ defaultEnvOptSimple = EnvOptSimple {
     envOptAppVersion = 0
 }
 
+checkDeviceExtensions :: Vector BSC.ByteString -> Vk.PhysicalDevice -> IO Bool
+checkDeviceExtensions reqExts physDevice = do
+    (_, devExtProps) <- Vk.enumerateDeviceExtensionProperties physDevice Nothing
+    let devExts = fmap (\Vk.ExtensionProperties { Vk.extensionName = name} -> name) devExtProps
+    pure $ V.all (`elem` devExts) reqExts
+
+checkExtendedDynamicState3Features :: Vk.PhysicalDevice -> IO Bool
+checkExtendedDynamicState3Features physDevice = do
+    Vk.PhysicalDeviceFeatures2 {} ::&
+        Vk.PhysicalDeviceExtendedDynamicState3FeaturesEXT {
+            Vk.extendedDynamicState3ColorBlendAdvanced = colorBlendAdv
+        } :&
+        ()
+        <- Vk.getPhysicalDeviceFeatures2KHR physDevice
+    
+    pure colorBlendAdv
 
 defaultDeviceSuitable ::  Vector BSC.ByteString -> Vk.PhysicalDevice -> IO (Maybe (Vk.PhysicalDevice, Word32))
 defaultDeviceSuitable reqExts physDevice = do
-        (_, devExtProps) <- Vk.enumerateDeviceExtensionProperties physDevice Nothing
-        let devExts = fmap (\Vk.ExtensionProperties { Vk.extensionName = name} -> name) devExtProps
-        let missingExts = V.filter (not . (`elem` devExts)) reqExts
-        if null missingExts then do
-            qprops <- Vk.getPhysicalDeviceQueueFamilyProperties physDevice
+    hasExts <- checkDeviceExtensions reqExts physDevice
+    hasColorBlendEquation <- checkExtendedDynamicState3Features physDevice
+    if hasExts && hasColorBlendEquation then do
+        qprops <- Vk.getPhysicalDeviceQueueFamilyProperties physDevice
 
-            let queueCriteria Vk.QueueFamilyProperties {..} =
-                    queueFlags .&. Vk.QUEUE_GRAPHICS_BIT /= zeroBits
+        let queueCriteria Vk.QueueFamilyProperties {..} =
+                queueFlags .&. Vk.QUEUE_GRAPHICS_BIT /= zeroBits
 
 
-            pure ((\a -> (physDevice, a)) . fromIntegral <$> V.findIndex queueCriteria qprops)
-        else do
-            pure Nothing
+        pure ((\a -> (physDevice, a)) . fromIntegral <$> V.findIndex queueCriteria qprops)
+    else do
+        pure Nothing
 
 defaultPickDevice :: Vk.Instance -> Vector BSC.ByteString -> Vector Vk.PhysicalDevice -> IO (Vk.PhysicalDevice, Word32)
 defaultPickDevice _ reqExts physDevices = do
@@ -127,14 +144,20 @@ newEnvironmentSimple EnvOptSimple {..} = do
 
     environmentDevice <- Vk.createDevice
         environmentPhysDevice
-        Vk.zero {
-            Vk.queueCreateInfos = V.singleton $ Vk.SomeStruct Vk.zero {
-                Vk.queueFamilyIndex = environmentGraphicsQFI,
-                Vk.queuePriorities = V.singleton 1.0
-            },
-            Vk.enabledLayerNames = V.fromList envOptDevLayers,
-            Vk.enabledExtensionNames = devExtensions
-        }
+        (
+            Vk.zero {
+                Vk.queueCreateInfos = V.singleton $ Vk.SomeStruct Vk.zero {
+                    Vk.queueFamilyIndex = environmentGraphicsQFI,
+                    Vk.queuePriorities = V.singleton 1.0
+                },
+                Vk.enabledLayerNames = V.fromList envOptDevLayers,
+                Vk.enabledExtensionNames = devExtensions
+            } ::&
+            (Vk.zero :: Vk.PhysicalDeviceExtendedDynamicState3FeaturesEXT) {
+                Vk.extendedDynamicState3ColorBlendAdvanced = True
+            } :&
+            ()
+        )
         Nothing
 
     environmentGraphicsQueue <- Vk.getDeviceQueue
