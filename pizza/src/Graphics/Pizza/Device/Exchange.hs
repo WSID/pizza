@@ -1,7 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Graphics.Pizza.Exchange where
+module Graphics.Pizza.Device.Exchange where
 
 import Control.Monad.IO.Class
 
@@ -16,11 +16,10 @@ import qualified Vulkan as Vk
 import qualified Vulkan.CStruct.Extends as Vk
 import qualified Vulkan.Zero as Vk
 
-import Graphics.Pizza.Environment
-import Graphics.Pizza.Renderer
+import Graphics.Pizza.Device.Environment
+import Graphics.Pizza.Device.Renderer
 import Graphics.Pizza.Internal.TypedBuffer
-
-import Graphics.Pizza.RenderTarget
+import Graphics.Pizza.Device.RenderTarget
 
 data Exchange a = Exchange {
     exchangeCommandBuffer :: Vk.CommandBuffer,

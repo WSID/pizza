@@ -2,7 +2,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE DataKinds #-}
 
-module Graphics.Pizza.RenderState where
+module Graphics.Pizza.Device.RenderState where
 
 import Control.Monad
 import Control.Monad.IO.Class
@@ -27,10 +27,10 @@ import qualified Vulkan.Zero as Vk
 import qualified Vulkan.CStruct.Extends as Vk
 
 -- pizza
-import Graphics.Pizza.Environment
+import Graphics.Pizza.Device.Environment
+import Graphics.Pizza.Device.Renderer
+import Graphics.Pizza.Device.RenderTarget
 import Graphics.Pizza.Graphic
-import Graphics.Pizza.Renderer
-import Graphics.Pizza.RenderTarget
 import Graphics.Pizza.Internal.TypedBuffer
 
 -- Render State!

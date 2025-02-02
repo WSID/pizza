@@ -2,7 +2,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE DataKinds #-}
 
-module Graphics.Pizza.RenderTarget where
+module Graphics.Pizza.Device.RenderTarget where
 
 import Control.Monad.IO.Class
 
@@ -23,8 +23,8 @@ import qualified Vulkan.Zero as Vk
 import qualified VulkanMemoryAllocator as Vma
 
 -- pizza
-import Graphics.Pizza.Environment
-import Graphics.Pizza.Renderer
+import Graphics.Pizza.Device.Environment
+import Graphics.Pizza.Device.Renderer
 
 data BaseRenderTarget px = BaseRenderTarget {
     renderTargetImageView :: Vk.ImageView,

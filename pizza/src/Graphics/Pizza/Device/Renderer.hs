@@ -3,7 +3,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-module Graphics.Pizza.Renderer where
+module Graphics.Pizza.Device.Renderer where
 
 import Control.Monad.IO.Class
 
@@ -30,9 +30,9 @@ import qualified Vulkan.Zero as Vk
 import qualified Vulkan.Utils.ShaderQQ.GLSL.Shaderc as Vku
 
 -- pizza
-import Graphics.Pizza.Environment
+import Graphics.Pizza.Device.Environment
+import Graphics.Pizza.Device.Format
 import Graphics.Pizza.Internal.TypedBuffer
-import Graphics.Pizza.Format
 
 -- | A renderer context object.
 --

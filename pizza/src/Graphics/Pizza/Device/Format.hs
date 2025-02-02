@@ -5,7 +5,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE InstanceSigs #-}
 
-module Graphics.Pizza.Format where
+module Graphics.Pizza.Device.Format where
 
 import Data.Kind
 import Data.Int

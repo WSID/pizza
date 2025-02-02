@@ -8,8 +8,6 @@ module ImageRender where
 -- base
 import Data.Word
 
-import Foreign.Marshal.Array
-
 -- linear
 import Linear
 

@@ -3,7 +3,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE PatternSynonyms #-}
 
-module Graphics.Pizza.Environment where
+module Graphics.Pizza.Device.Environment where
 
 import Control.Monad.IO.Class
 
