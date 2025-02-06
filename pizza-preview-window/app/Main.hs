@@ -290,7 +290,7 @@ main = do
     surfaceState <- createSurfaceState environment win
     swapchain <- createSwapchain environment surfaceState width height
 
-    renderer <- Pz.newRenderer environment Vk.IMAGE_LAYOUT_GENERAL :: IO (Pz.Renderer (Pz.VBGRA (Pz.UNorm Word8)))
+    renderer <- Pz.newRenderer environment Vk.IMAGE_LAYOUT_PRESENT_SRC_KHR :: IO (Pz.Renderer (Pz.VBGRA (Pz.UNorm Word8)))
     renderTarget <- Pz.newSwapchainRenderTarget renderer swapchain width height
     renderState <- Pz.newRenderStateSwapchain renderer
 
