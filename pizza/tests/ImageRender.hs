@@ -6,6 +6,7 @@
 module ImageRender where
 
 -- base
+import Control.Monad
 import Data.Word
 
 -- linear
@@ -34,10 +35,10 @@ makeRenderedImage graphics = do
     exchange <- newExchangeN renderer (200 * 200)
 
     -- Render image from graphic. It happens on GPU.
-    _ <- renderRenderStateTarget renderer renderState graphics renderTarget Nothing
+    _ <- renderRenderStateTarget renderer renderState graphics renderTarget noImageSet Nothing
 
     -- Wait image to exchange, to access pixels in CPU.
-    writeExchangeRenderTarget renderer exchange renderTarget (Just (renderStateSemaphore renderState))
+    join $ writeExchangeRenderTarget renderer exchange renderTarget (Just (renderStateSemaphore renderState))
     _ <- Vk.waitForFences environmentDevice (V.singleton (exchangeFence exchange)) True maxBound
 
     -- Copy image pixels from exchange.

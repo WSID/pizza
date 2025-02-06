@@ -53,6 +53,7 @@ data Renderer px = Renderer {
     -- Descriptor Set Layout
     rendererScreenDSLayout :: Vk.DescriptorSetLayout,
     rendererPatternDSLayout :: Vk.DescriptorSetLayout,
+    rendererPatternImageDSLayout :: Vk.DescriptorSetLayout,
 
     -- Pipeline Layouts
     rendererStencilPipelineLayout :: Vk.PipelineLayout,
@@ -71,11 +72,13 @@ data Renderer px = Renderer {
     rendererPatternSolidShaderFrag :: Vk.ShaderModule,
     rendererPatternLinearShaderFrag :: Vk.ShaderModule,
     rendererPatternRadialShaderFrag :: Vk.ShaderModule,
+    rendererPatternImageShaderFrag :: Vk.ShaderModule,
 
     -- Pattern Solid
     rendererPatternSolid :: Vk.Pipeline,
     rendererPatternLinear :: Vk.Pipeline,
     rendererPatternRadial :: Vk.Pipeline,
+    rendererPatternImage :: Vk.Pipeline,
 
     -- Pools
     rendererDescriptorPool :: Vk.DescriptorPool,
@@ -133,6 +136,20 @@ newRendererOf rendererEnvironment rendererImageLayout px = do
             ]
         }
         Nothing
+    
+    rendererPatternImageDSLayout <- Vk.createDescriptorSetLayout
+        environmentDevice
+        Vk.zero {
+            Vk.bindings = V.singleton (
+                Vk.zero {
+                    Vk.binding = 0,
+                    Vk.descriptorType = Vk.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    Vk.descriptorCount = 1,
+                    Vk.stageFlags = Vk.SHADER_STAGE_FRAGMENT_BIT
+                }
+            )
+        }
+        Nothing
 
     -- Layouts : Pipeline Layouts
 
@@ -151,7 +168,8 @@ newRendererOf rendererEnvironment rendererImageLayout px = do
             Vk.flags = zeroBits,
             Vk.setLayouts = V.fromList [
                 rendererScreenDSLayout,
-                rendererPatternDSLayout
+                rendererPatternDSLayout,
+                rendererPatternImageDSLayout
             ],
             Vk.pushConstantRanges = V.empty
         }
@@ -294,6 +312,15 @@ newRendererOf rendererEnvironment rendererImageLayout px = do
         }
         Nothing
 
+    rendererPatternImageShaderFrag <- Vk.createShaderModule
+        environmentDevice
+        Vk.ShaderModuleCreateInfo {
+            Vk.next = (),
+            Vk.flags = zeroBits,
+            Vk.code = codePatternImageFrag
+        }
+        Nothing
+
     (_, pipelines) <- Vk.createGraphicsPipelines
         environmentDevice
         Vk.NULL_HANDLE
@@ -312,15 +339,20 @@ newRendererOf rendererEnvironment rendererImageLayout px = do
                 rendererPatternLayout
                 rendererRenderPass
                 rendererPatternShaderVert
-                rendererPatternRadialShaderFrag
+                rendererPatternRadialShaderFrag,
+            Vk.SomeStruct $ basePatternPipelineCreateInfo
+                rendererPatternLayout
+                rendererRenderPass
+                rendererPatternShaderVert
+                rendererPatternImageShaderFrag
         ] )
         Nothing
         -- TOOD: Move else to here!
 
 
-    let (rendererPatternSolid, rendererPatternLinear, rendererPatternRadial) =
+    let (rendererPatternSolid, rendererPatternLinear, rendererPatternRadial, rendererPatternImage) =
             case V.toList pipelines of
-                [a, b, c] -> (a, b, c)
+                [a, b, c, d] -> (a, b, c, d)
                 _ -> error "newRenderer: Got incorrect number of pipeline!"
 
     -- Descriptor Pool
@@ -332,7 +364,8 @@ newRendererOf rendererEnvironment rendererImageLayout px = do
             Vk.maxSets = 32,
             Vk.poolSizes = V.fromList [
                     Vk.DescriptorPoolSize Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER 32,
-                    Vk.DescriptorPoolSize Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC 32
+                    Vk.DescriptorPoolSize Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC 32,
+                    Vk.DescriptorPoolSize Vk.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER 128
                 ]
         }
         Nothing
@@ -380,10 +413,12 @@ freeRenderer Renderer {..} = do
     Vk.destroyCommandPool environmentDevice rendererCommandPool Nothing
     Vk.destroyDescriptorPool environmentDevice rendererDescriptorPool Nothing
 
+    Vk.destroyPipeline environmentDevice rendererPatternImage Nothing
     Vk.destroyPipeline environmentDevice rendererPatternRadial Nothing
     Vk.destroyPipeline environmentDevice rendererPatternLinear Nothing
     Vk.destroyPipeline environmentDevice rendererPatternSolid Nothing
 
+    Vk.destroyShaderModule environmentDevice rendererPatternImageShaderFrag Nothing
     Vk.destroyShaderModule environmentDevice rendererPatternRadialShaderFrag Nothing
     Vk.destroyShaderModule environmentDevice rendererPatternLinearShaderFrag Nothing
     Vk.destroyShaderModule environmentDevice rendererPatternSolidShaderFrag Nothing
@@ -396,6 +431,7 @@ freeRenderer Renderer {..} = do
 
     Vk.destroyPipelineLayout environmentDevice rendererPatternLayout Nothing
     Vk.destroyPipelineLayout environmentDevice rendererStencilPipelineLayout Nothing
+    Vk.destroyDescriptorSetLayout environmentDevice rendererPatternImageDSLayout Nothing
     Vk.destroyDescriptorSetLayout environmentDevice rendererPatternDSLayout Nothing
     Vk.destroyDescriptorSetLayout environmentDevice rendererScreenDSLayout Nothing
 
@@ -710,4 +746,28 @@ codePatternRadialFrag = [Vku.frag|
         }
     |]
 
+codePatternImageFrag :: BSC.ByteString
+codePatternImageFrag = [Vku.frag|
+        #version 450
+
+        layout (location = 0)
+        in vec2 fragPos;
+
+        layout (location = 0)
+        out vec4 color;
+
+        layout (set = 1, binding = 0) uniform PatternImage {
+            mat2 imageTransMatrix;
+            vec2 imageTransTrans;
+            float imageOpacity;
+        };
+
+        layout (set = 2, binding = 0) uniform sampler2D image;
+
+        void main () {
+            vec2 texCoord = imageTransTrans + imageTransMatrix * fragPos;
+            vec4 texColor = texture (image, texCoord);
+            color = vec4(texColor.rgb, imageOpacity * texColor.a);
+        }
+    |]
 

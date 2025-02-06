@@ -72,7 +72,8 @@ instance Monoid Graphics where
 data Pattern =
     PatternSolid (V4 Float) |
     PatternLinear (V2 Float) (V2 Float) (V4 Float) (V4 Float) |
-    PatternRadial (V2 Float) Float (V4 Float) (V4 Float)
+    PatternRadial (V2 Float) Float (V4 Float) (V4 Float) |
+    PatternImage Int Transform Float
 
 applyOpacityV :: Float -> V4 Float -> V4 Float
 applyOpacityV opacity (V4 r g b a) = V4 r g b (a * opacity)
@@ -81,6 +82,7 @@ applyOpacity :: Float -> Pattern -> Pattern
 applyOpacity opacity (PatternSolid c) = PatternSolid (applyOpacityV opacity c)
 applyOpacity opacity (PatternLinear start end sc ec) = PatternLinear start end (applyOpacityV opacity sc) (applyOpacityV opacity ec)
 applyOpacity opacity (PatternRadial center radius sc ec) = PatternRadial center radius (applyOpacityV opacity sc) (applyOpacityV opacity ec)
+applyOpacity opacity (PatternImage image trans o) = PatternImage image trans (opacity * o)
 
 
 dashStroke :: DashPattern -> StrokeOption -> StrokeEnd -> Path -> [Path]
