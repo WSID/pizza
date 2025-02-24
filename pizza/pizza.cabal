@@ -65,6 +65,7 @@ library
         Graphics.Pizza.Device.Exchange,
         Graphics.Pizza.Device.Format,
         Graphics.Pizza.Device.Image,
+        Graphics.Pizza.Device.RenderCore,
         Graphics.Pizza.Device.Renderer,
         Graphics.Pizza.Device.RenderState,
         Graphics.Pizza.Device.RenderTarget,

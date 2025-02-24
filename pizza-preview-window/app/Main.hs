@@ -236,8 +236,8 @@ makeGraphic time = let env = Pz.defPaintingEnv { Pz.paintingThickness = 10 }
                             Pz.pathingCurve $ Pz.arc (V2 300 100) 50 (pi * (-0.5)) (pi * (0.5))
                             Pz.pathingCurve $ Pz.arc (V2 100 100) 50 (pi * (0.5)) (pi * (1.5))
 
-makeWaveImage :: Pz.Renderer (Pz.VBGRA (Pz.UNorm Word8)) -> Int -> Int -> IO (Pz.Image (Pz.VRGBA (Pz.UNorm Word8)))
-makeWaveImage renderer width height = do
+makeWaveImage :: Pz.RenderCore -> Int -> Int -> IO (Pz.Image (Pz.VRGBA (Pz.UNorm Word8)))
+makeWaveImage renderCore width height = do
     let coordinates = do
             y <- [0, 1 .. width]
             x <- [0, 1 .. height]
@@ -256,12 +256,12 @@ makeWaveImage renderer width height = do
             g = round (sqrt (sp * cp) * 255)
             r = round (cp * 255)
     
-    exchange <- Pz.newExchangeN renderer (width * height)
-    image <- Pz.newImage (Pz.rendererEnvironment renderer) width height 
-    Pz.writeExchangeN renderer exchange (fmap mapper coordinates)
-    join $ Pz.copyExchangeToImage renderer exchange image Nothing
+    exchange <- Pz.newExchangeN renderCore (width * height)
+    image <- Pz.newImage (Pz.renderCoreEnvironment renderCore) width height 
+    Pz.writeExchangeN renderCore exchange (fmap mapper coordinates)
+    join $ Pz.copyExchangeToImage renderCore exchange image Nothing
 
-    Pz.freeExchange renderer exchange
+    Pz.freeExchange renderCore exchange
     pure image
 
 
@@ -290,12 +290,13 @@ main = do
     surfaceState <- createSurfaceState environment win
     swapchain <- createSwapchain environment surfaceState width height
 
-    renderer <- Pz.newRenderer environment Vk.IMAGE_LAYOUT_PRESENT_SRC_KHR :: IO (Pz.Renderer (Pz.VBGRA (Pz.UNorm Word8)))
-    renderTarget <- Pz.newSwapchainRenderTarget renderer swapchain width height
-    renderState <- Pz.newRenderStateSwapchain renderer
+    renderCore <- Pz.newRenderCore environment
+    renderer <- Pz.newRenderer renderCore Vk.IMAGE_LAYOUT_PRESENT_SRC_KHR :: IO (Pz.Renderer (Pz.VBGRA (Pz.UNorm Word8)))
+    renderTarget <- Pz.newSwapchainRenderTarget renderCore renderer swapchain width height
+    renderState <- Pz.newRenderStateSwapchain renderCore
 
-    image <- makeWaveImage renderer 100 100
-    imageSet <- Pz.newImageSet renderer (V.singleton image)
+    image <- makeWaveImage renderCore 100 100
+    imageSet <- Pz.newImageSet renderCore (V.singleton image)
 
     keepAlive <- newIORef True
     GLFW.setWindowCloseCallback win $ Just (\_ -> writeIORef keepAlive False)
@@ -308,7 +309,7 @@ main = do
             let timeDiff = realToFrac $ diffUTCTime timeFrameStart timeStart
             let graphics = makeGraphic timeDiff
 
-            (_, presentWait) <- Pz.renderRenderStateTargetSwapchain renderer renderState graphics renderTarget imageSet
+            (_, presentWait) <- Pz.renderRenderStateTargetSwapchain renderCore renderer renderState graphics renderTarget imageSet
             timeFrameDone <- getCurrentTime
             presentWait
 
@@ -324,12 +325,13 @@ main = do
 
     Vk.deviceWaitIdle (Pz.environmentDevice environment)
 
-    Pz.freeImageSet renderer imageSet
+    Pz.freeImageSet renderCore imageSet
     Pz.freeImage environment image
 
-    Pz.freeRenderStateSwapchain renderer renderState
-    Pz.freeSwapchainRenderTarget renderer renderTarget
+    Pz.freeRenderStateSwapchain renderCore renderState
+    Pz.freeSwapchainRenderTarget renderCore renderTarget
     Pz.freeRenderer renderer
+    Pz.freeRenderCore renderCore
     Vk.destroySwapchainKHR (Pz.environmentDevice environment) swapchain Nothing
     destroySurfaceState environment surfaceState
 

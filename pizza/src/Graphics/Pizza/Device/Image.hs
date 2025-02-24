@@ -5,7 +5,6 @@ module Graphics.Pizza.Device.Image where
 
 import Control.Monad.IO.Class
 import Data.Bits
-import Data.Foldable
 import Data.Traversable
 import Foreign.Ptr
 
@@ -13,14 +12,13 @@ import qualified Data.Vector as V
 import Data.Vector (Vector)
 
 import qualified Vulkan as Vk
-import qualified Vulkan.Zero as Vk
 import qualified Vulkan.CStruct.Extends as Vk
 
 import qualified VulkanMemoryAllocator as Vma
 
 import Graphics.Pizza.Device.Environment
 import Graphics.Pizza.Device.Format
-import Graphics.Pizza.Device.Renderer
+import Graphics.Pizza.Device.RenderCore
 
 data Image px = Image {
     imageSize :: Vk.Extent2D,
@@ -129,16 +127,16 @@ newtype ImageSet px = ImageSet {
     imageSetDescriptorSets :: Vector Vk.DescriptorSet
 }
 
-newImageSet :: (MonadIO m) => Renderer a -> Vector (Image px) -> m (ImageSet b)
-newImageSet Renderer {..} images = do
-    let Environment {..} = rendererEnvironment
+newImageSet :: (MonadIO m) => RenderCore -> Vector (Image px) -> m (ImageSet px)
+newImageSet RenderCore {..} images = do
+    let Environment {..} = renderCoreEnvironment
     descriptorSets <- for images $ \img -> do
         descriptorSet <- Vk.allocateDescriptorSets
             environmentDevice
             Vk.DescriptorSetAllocateInfo {
                 Vk.next = (),
-                Vk.descriptorPool = rendererDescriptorPool,
-                Vk.setLayouts = V.fromList [ rendererPatternImageDSLayout ]
+                Vk.descriptorPool = renderCoreDescriptorPool,
+                Vk.setLayouts = V.fromList [ renderCorePatternImageDSLayout ]
             }
         pure (img, V.head descriptorSet)
     
@@ -166,9 +164,10 @@ newImageSet Renderer {..} images = do
 
     pure $ ImageSet $ fmap snd descriptorSets
 
-freeImageSet :: (MonadIO m) => Renderer a -> ImageSet b -> m ()
-freeImageSet Renderer {..} ImageSet {..} =
-    Vk.freeDescriptorSets (environmentDevice rendererEnvironment) rendererDescriptorPool imageSetDescriptorSets
+freeImageSet :: (MonadIO m) => RenderCore -> ImageSet b -> m ()
+freeImageSet RenderCore {..} ImageSet {..} =
+    let Environment {..} = renderCoreEnvironment in
+    Vk.freeDescriptorSets environmentDevice renderCoreDescriptorPool imageSetDescriptorSets
 
 noImageSet :: ImageSet a
 noImageSet = ImageSet V.empty

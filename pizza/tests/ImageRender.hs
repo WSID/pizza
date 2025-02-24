@@ -29,26 +29,29 @@ makeRenderedImage graphics = do
     let Environment {..} = environment
 
     -- Pizzas
-    renderer <- newRenderer environment Vk.IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL :: IO (Renderer (VRGBA (UNorm Word8)))
-    renderTarget <- newRenderTarget renderer 200 200
-    renderState <- newRenderState renderer
-    exchange <- newExchangeN renderer (200 * 200)
+    renderCore <- newRenderCore environment
+
+    renderer <- newRenderer renderCore Vk.IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL :: IO (Renderer (VRGBA (UNorm Word8)))
+    renderTarget <- newRenderTarget renderCore renderer 200 200
+    renderState <- newRenderState renderCore
+    exchange <- newExchangeN renderCore (200 * 200)
 
     -- Render image from graphic. It happens on GPU.
-    _ <- renderRenderStateTarget renderer renderState graphics renderTarget noImageSet Nothing
+    _ <- renderRenderStateTarget renderCore renderer renderState graphics renderTarget noImageSet Nothing
 
     -- Wait image to exchange, to access pixels in CPU.
-    join $ writeExchangeRenderTarget renderer exchange renderTarget (Just (renderStateSemaphore renderState))
+    join $ writeExchangeRenderTarget renderCore exchange renderTarget (Just (renderStateSemaphore renderState))
     _ <- Vk.waitForFences environmentDevice (V.singleton (exchangeFence exchange)) True maxBound
 
     -- Copy image pixels from exchange.
-    result <- readExchangeN renderer exchange (200 * 200)
+    result <- readExchangeN renderCore exchange (200 * 200)
 
     -- Wrap up & clean up
-    freeExchange renderer exchange
-    freeRenderState renderer renderState
-    freeRenderTarget renderer renderTarget
+    freeExchange renderCore exchange
+    freeRenderState renderCore renderState
+    freeRenderTarget renderCore renderTarget
     freeRenderer renderer
+    freeRenderCore renderCore
 
     freeEnvironment environment
 

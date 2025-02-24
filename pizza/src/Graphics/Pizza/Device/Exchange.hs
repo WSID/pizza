@@ -16,7 +16,7 @@ import qualified Vulkan.CStruct.Extends as Vk
 import qualified Vulkan.Zero as Vk
 
 import Graphics.Pizza.Device.Environment
-import Graphics.Pizza.Device.Renderer
+import Graphics.Pizza.Device.RenderCore
 import Graphics.Pizza.Internal.TypedBuffer
 import Graphics.Pizza.Device.RenderTarget
 import Graphics.Pizza.Device.Image
@@ -27,14 +27,14 @@ data Exchange a = Exchange {
     exchangeFence :: Vk.Fence
 }
 
-newExchangeSized :: (MonadIO m) => Renderer px -> Int -> m (Exchange a)
-newExchangeSized renderer size = do
-    let Environment {..} = rendererEnvironment renderer
+newExchangeSized :: (MonadIO m) => RenderCore -> Int -> m (Exchange a)
+newExchangeSized renderCore size = do
+    let Environment {..} = renderCoreEnvironment renderCore
 
     commandBuffers <- Vk.allocateCommandBuffers
         environmentDevice 
         Vk.CommandBufferAllocateInfo {
-            Vk.commandPool = rendererCommandPool renderer,
+            Vk.commandPool = renderCoreCommandPool renderCore,
             Vk.level = Vk.COMMAND_BUFFER_LEVEL_PRIMARY,
             Vk.commandBufferCount = 1
         }
@@ -53,20 +53,20 @@ newExchangeSized renderer size = do
     pure $ Exchange {..}
 
 
-newExchangeNA :: (MonadIO m, Storable a) => Renderer px -> Int -> a -> m (Exchange a)
-newExchangeNA renderer n a = newExchangeSized renderer (n * sizeOf a)
+newExchangeNA :: (MonadIO m, Storable a) => RenderCore -> Int -> a -> m (Exchange a)
+newExchangeNA renderCore n a = newExchangeSized renderCore (n * sizeOf a)
 
-newExchangeN :: (MonadIO m, Storable a) => Renderer px -> Int -> m (Exchange a)
-newExchangeN renderer n = newExchangeNA renderer n undefined
+newExchangeN :: (MonadIO m, Storable a) => RenderCore -> Int -> m (Exchange a)
+newExchangeN renderCore n = newExchangeNA renderCore n undefined
 
 castExchange :: Exchange a -> Exchange b
 castExchange exchange = exchange {
     exchangeBuffer = castTypedBuffer $ exchangeBuffer exchange
 }
 
-freeExchange :: (MonadIO m) => Renderer px -> Exchange a -> m ()
-freeExchange renderer exchange = do
-    let Environment {..} = rendererEnvironment renderer
+freeExchange :: (MonadIO m) => RenderCore -> Exchange a -> m ()
+freeExchange renderCore exchange = do
+    let Environment {..} = renderCoreEnvironment renderCore
 
     Vk.destroyFence
         environmentDevice
@@ -77,34 +77,34 @@ freeExchange renderer exchange = do
 
     Vk.freeCommandBuffers
         environmentDevice
-        (rendererCommandPool renderer)
+        (renderCoreCommandPool renderCore)
         (V.singleton $ exchangeCommandBuffer exchange)
 
 
 
-mapExchange :: (MonadIO m) => Renderer px -> Exchange a -> m (Ptr a)
-mapExchange renderer exchange = mapTypedBuffer (rendererEnvironment renderer) (exchangeBuffer exchange)
+mapExchange :: (MonadIO m) => RenderCore -> Exchange a -> m (Ptr a)
+mapExchange renderCore exchange = mapTypedBuffer (renderCoreEnvironment renderCore) (exchangeBuffer exchange)
 
-unmapExchange :: (MonadIO m) => Renderer px -> Exchange a -> m ()
-unmapExchange renderer exchange = unmapTypedBuffer (rendererEnvironment renderer) (exchangeBuffer exchange)
+unmapExchange :: (MonadIO m) => RenderCore -> Exchange a -> m ()
+unmapExchange renderCore exchange = unmapTypedBuffer (renderCoreEnvironment renderCore) (exchangeBuffer exchange)
 
-writeExchange1 :: (MonadIO m, Storable a) => Renderer px -> Exchange a -> a -> m ()
-writeExchange1 renderer exchange = writeTypedBuffer1 (rendererEnvironment renderer) (exchangeBuffer exchange)
+writeExchange1 :: (MonadIO m, Storable a) => RenderCore -> Exchange a -> a -> m ()
+writeExchange1 renderCore exchange = writeTypedBuffer1 (renderCoreEnvironment renderCore) (exchangeBuffer exchange)
 
-readExchange1 :: (MonadIO m, Storable a) => Renderer px -> Exchange a -> m a
-readExchange1 renderer exchange = readTypedBuffer1 (rendererEnvironment renderer) (exchangeBuffer exchange)
+readExchange1 :: (MonadIO m, Storable a) => RenderCore -> Exchange a -> m a
+readExchange1 renderCore exchange = readTypedBuffer1 (renderCoreEnvironment renderCore) (exchangeBuffer exchange)
 
-writeExchangeN :: (MonadIO m, Storable a) => Renderer px -> Exchange a -> [a] -> m ()
-writeExchangeN renderer exchange = writeTypedBufferN (rendererEnvironment renderer) (exchangeBuffer exchange)
+writeExchangeN :: (MonadIO m, Storable a) => RenderCore -> Exchange a -> [a] -> m ()
+writeExchangeN renderCore exchange = writeTypedBufferN (renderCoreEnvironment renderCore) (exchangeBuffer exchange)
 
-readExchangeN :: (MonadIO m, Storable a) => Renderer px -> Exchange a -> Int -> m [a]
-readExchangeN renderer exchange = readTypedBufferN (rendererEnvironment renderer) (exchangeBuffer exchange)
+readExchangeN :: (MonadIO m, Storable a) => RenderCore -> Exchange a -> Int -> m [a]
+readExchangeN renderCore exchange = readTypedBufferN (renderCoreEnvironment renderCore) (exchangeBuffer exchange)
 
 -- This now requires a command buffer write, and wait.
 -- TODO: How to wrap semaphore?
-writeExchangeRenderTarget :: (MonadIO m) => Renderer px -> Exchange a -> RenderTarget a -> Maybe Vk.Semaphore -> m (m ())
-writeExchangeRenderTarget renderer Exchange {..} RenderTarget {..} maySem = do
-    let Environment {..} = rendererEnvironment renderer
+writeExchangeRenderTarget :: (MonadIO m) => RenderCore -> Exchange a -> RenderTarget a -> Maybe Vk.Semaphore -> m (m ())
+writeExchangeRenderTarget renderCore Exchange {..} RenderTarget {..} maySem = do
+    let Environment {..} = renderCoreEnvironment renderCore
     let Vk.Extent2D width height  = renderTargetSize
 
     Vk.useCommandBuffer exchangeCommandBuffer Vk.CommandBufferBeginInfo {
@@ -148,10 +148,10 @@ writeExchangeRenderTarget renderer Exchange {..} RenderTarget {..} maySem = do
     
     pure (void $ Vk.waitForFences environmentDevice (V.singleton exchangeFence) True maxBound)
 
-copyExchangeToImage :: (MonadIO m) => Renderer px -> Exchange a -> Image a -> Maybe Vk.Semaphore -> m (m ())
-copyExchangeToImage renderer Exchange {..} Image {..} maySem = do
+copyExchangeToImage :: (MonadIO m) => RenderCore -> Exchange a -> Image a -> Maybe Vk.Semaphore -> m (m ())
+copyExchangeToImage renderCore Exchange {..} Image {..} maySem = do
 
-    let Environment {..} = rendererEnvironment renderer
+    let Environment {..} = renderCoreEnvironment renderCore
     let Vk.Extent2D width height  = imageSize
 
     Vk.useCommandBuffer exchangeCommandBuffer Vk.CommandBufferBeginInfo {
