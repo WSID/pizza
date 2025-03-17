@@ -175,8 +175,8 @@ createSwapchain Pz.Environment {..} SurfaceState {..} width height = do
 
     Vk.createSwapchainKHR environmentDevice swapchainCreateInfo Nothing
 
-makeGraphic :: Float -> Pz.Graphics
-makeGraphic time = let env = Pz.defPaintingEnv { Pz.paintingThickness = 10 }
+makeGraphic :: Pz.Image px -> Float -> Pz.Graphics
+makeGraphic image time = let env = Pz.defPaintingEnv { Pz.paintingThickness = 10 }
     in flip Pz.runPainting_ env $ do
         let theta = time * 2
             animValue1 = 400 * cos theta
@@ -184,7 +184,7 @@ makeGraphic time = let env = Pz.defPaintingEnv { Pz.paintingThickness = 10 }
 
         -- Shape 1
         let pattern1 = Pz.PatternImage
-                0
+                image
                 (Pz.fromScale (V2 0.01 0.01))
                 1
 
@@ -296,7 +296,6 @@ main = do
     renderState <- Pz.newRenderStateSwapchain renderCore
 
     image <- makeWaveImage renderCore 100 100
-    imageSet <- Pz.newImageSet renderCore (V.singleton image)
 
     keepAlive <- newIORef True
     GLFW.setWindowCloseCallback win $ Just (\_ -> writeIORef keepAlive False)
@@ -307,9 +306,9 @@ main = do
     let loop recur timePrevFrame = do
             timeFrameStart <- getCurrentTime
             let timeDiff = realToFrac $ diffUTCTime timeFrameStart timeStart
-            let graphics = makeGraphic timeDiff
+            let graphics = makeGraphic image timeDiff
 
-            (_, presentWait) <- Pz.renderRenderStateTargetSwapchain renderCore renderer renderState graphics renderTarget imageSet
+            (_, presentWait) <- Pz.renderRenderStateTargetSwapchain renderCore renderer renderState graphics renderTarget
             timeFrameDone <- getCurrentTime
             presentWait
 
@@ -325,7 +324,6 @@ main = do
 
     Vk.deviceWaitIdle (Pz.environmentDevice environment)
 
-    Pz.freeImageSet renderCore imageSet
     Pz.freeImage environment image
 
     Pz.freeRenderStateSwapchain renderCore renderState

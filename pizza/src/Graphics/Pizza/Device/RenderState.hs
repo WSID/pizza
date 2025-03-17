@@ -19,7 +19,7 @@ import Linear
 
 -- vector
 import qualified Data.Vector as V
-import Data.Vector ((!), (!?))
+import Data.Vector (Vector, (!))
 
 -- vulkan
 import qualified Vulkan as Vk
@@ -120,8 +120,9 @@ data RenderState = RenderState {
     renderStateVertex :: TypedBuffer (V2 Float),
     renderStateIndex :: TypedBuffer (V3 Word32),
     renderStateScreenDS :: Vk.DescriptorSet,
-    renderStateScreenUniform :: TypedBuffer (V2 Float),
     renderStatePatternDS :: Vk.DescriptorSet,
+    renderStateImageDSs :: Vector Vk.DescriptorSet,
+    renderStateScreenUniform :: TypedBuffer (V2 Float),
     renderStatePatternUniform :: TypedBuffer (),
     renderStateTransformUniform :: TypedBuffer (), -- for Transform
     renderStateSemaphore :: Vk.Semaphore,
@@ -156,7 +157,14 @@ newRenderState RenderCore {..} = do
         environmentDevice
         Vk.zero {
             Vk.descriptorPool = renderCoreDescriptorPool,
-            Vk.setLayouts = V.fromList [ renderCoreScreenDSLayout, renderCorePatternDSLayout ]
+            Vk.setLayouts = V.fromList [ renderCoreScreenDSLayout, renderCorePatternDSLayout]
+        }
+    
+    renderStateImageDSs <- Vk.allocateDescriptorSets
+        environmentDevice
+        Vk.zero {
+            Vk.descriptorPool = renderCoreDescriptorPool,
+            Vk.setLayouts = V.replicate 64 renderCorePatternImageDSLayout
         }
 
     let (renderStateScreenDS, renderStatePatternDS) =
@@ -227,6 +235,7 @@ freeRenderState RenderCore {..} RenderState {..} = do
     freeTypedBuffer renderCoreEnvironment renderStateScreenUniform
     freeTypedBuffer renderCoreEnvironment renderStatePatternUniform
     freeTypedBuffer renderCoreEnvironment renderStateTransformUniform
+    Vk.freeDescriptorSets environmentDevice renderCoreDescriptorPool renderStateImageDSs
     Vk.freeDescriptorSets environmentDevice renderCoreDescriptorPool (V.fromList [renderStateScreenDS, renderStatePatternDS])
     freeTypedBuffer renderCoreEnvironment renderStateIndex
     freeTypedBuffer renderCoreEnvironment renderStateVertex
@@ -248,8 +257,9 @@ freeRenderStateSwapchain RenderCore {..} RenderStateSwapchain {..} = do
     freeRenderState RenderCore {..} renderStateBase
 
 
-setRenderStateTargetBase :: (MonadIO m) => RenderCore -> Renderer px -> RenderState -> Graphics -> Int -> Int -> BaseRenderTarget px -> ImageSet px -> m ()
-setRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graphics width height BaseRenderTarget {..} imageSet = do
+setRenderStateTargetBase :: (MonadIO m) => RenderCore -> Renderer px -> RenderState -> Graphics -> Int -> Int -> BaseRenderTarget px -> m ()
+setRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graphics width height BaseRenderTarget {..} = do
+    let Environment {..} = renderCoreEnvironment
     let renderArea = Vk.Rect2D {
             Vk.offset = Vk.Offset2D 0 0,
             Vk.extent = Vk.Extent2D (fromIntegral width) (fromIntegral height)
@@ -281,8 +291,8 @@ setRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graphics
             pokeArray (advancePtr iptr pathIi) pathIndices
             pure (pathViend, pathIi + pathVcount - 2)
 
-    let appendDrawItem :: (Int, Int, Int) -> DrawItem -> IO (Int, Int, Int)
-        appendDrawItem (vi, ii, uoff) (DrawShape paths attrs) = do
+    let appendDrawItem :: (Int, Int, Int, Int) -> DrawItem -> IO (Int, Int, Int, Int)
+        appendDrawItem (vi, ii, uoff, iindex) (DrawShape paths attrs) = do
             let DrawAttributes {
                     drawPattern = pattern,
                     drawTransform = trans,
@@ -303,7 +313,31 @@ setRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graphics
                 PatternSolid color -> pokeByteOff uptr uoff color
                 PatternLinear ps pe cs ce -> pokeByteOff uptr uoff (PreparationLinear ps pe cs ce)
                 PatternRadial ps r cs ce -> pokeByteOff uptr uoff (PreparationRadial ps r cs ce)
-                PatternImage _ itrans iopacity -> pokeByteOff uptr uoff (PreparationImage itrans iopacity)
+
+                PatternImage image itrans iopacity -> do
+                    Vk.updateDescriptorSets
+                        environmentDevice
+                        ( V.singleton $
+                          Vk.SomeStruct $
+                          Vk.WriteDescriptorSet {
+                            Vk.next = (),
+                            Vk.dstSet = renderStateImageDSs ! iindex,
+                            Vk.dstBinding = 0,
+                            Vk.dstArrayElement = 0,
+                            Vk.descriptorCount = 1,
+                            Vk.descriptorType = Vk.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                            Vk.bufferInfo = V.empty,
+                            Vk.imageInfo = V.singleton Vk.DescriptorImageInfo {
+                                Vk.sampler = imageSampler image,
+                                Vk.imageView = imageView image,
+                                Vk.imageLayout = Vk.IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                            },
+                            Vk.texelBufferView = V.empty
+                          }
+                        )
+                        V.empty
+
+                    pokeByteOff uptr uoff (PreparationImage itrans iopacity)
 
             let Transform (V2 transMx transMy) transT = trans
 
@@ -318,9 +352,13 @@ setRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graphics
                 pattern
                 blend
                 (fromIntegral uoff)
-                imageSet
+                iindex
+            
+            let niindex = case pattern of
+                    PatternImage {} -> iindex + 1
+                    _ -> iindex
 
-            pure (nvi, nii, uoff + patOffset)
+            pure (nvi, nii, uoff + patOffset, niindex)
 
     Vk.beginCommandBuffer
         renderStateCommandBuffer
@@ -356,7 +394,7 @@ setRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graphics
 
     -- This might be useful performance data.
     -- (Represents vertices count and triangle counts)
-    _ <- liftIO $ foldlM appendDrawItem (0, 0, 0) drawItems
+    _ <- liftIO $ foldlM appendDrawItem (0, 0, 0, 0) drawItems
 
     Vk.cmdEndRenderPass renderStateCommandBuffer
 
@@ -407,8 +445,8 @@ recordRenderStateStencilCmd RenderCore {..} Renderer {..} RenderState {..} rende
 
     Vk.cmdDrawIndexed renderStateCommandBuffer (3 * indexCount) 1 (3 * indexStart) 0 0
 
-recordRenderStateColorCmd :: (MonadIO m) => RenderCore -> Renderer px -> RenderState -> Pattern -> Blend -> Word32 -> ImageSet i -> m ()
-recordRenderStateColorCmd RenderCore {..} Renderer {..} RenderState {..} pattern blend patOffset imageSet = do
+recordRenderStateColorCmd :: (MonadIO m) => RenderCore -> Renderer px -> RenderState -> Pattern -> Blend -> Word32 -> Int -> m ()
+recordRenderStateColorCmd RenderCore {..} Renderer {..} RenderState {..} pattern blend patOffset imageIndex = do
     Vk.cmdBindDescriptorSets
         renderStateCommandBuffer
         Vk.PIPELINE_BIND_POINT_GRAPHICS
@@ -446,18 +484,14 @@ recordRenderStateColorCmd RenderCore {..} Renderer {..} RenderState {..} pattern
         (V.fromList [patOffset, patOffset])
 
     case pattern of
-        PatternImage imageIndex _ _ -> do
-            let ImageSet dsv = imageSet
-                mids = dsv !? imageIndex
-            
-            for_ mids $ \ids -> do
-                Vk.cmdBindDescriptorSets
-                    renderStateCommandBuffer
-                    Vk.PIPELINE_BIND_POINT_GRAPHICS
-                    renderCorePatternLayout
-                    2
-                    (V.singleton ids)
-                    V.empty
+        PatternImage _ _ _ -> do
+            Vk.cmdBindDescriptorSets
+                renderStateCommandBuffer
+                Vk.PIPELINE_BIND_POINT_GRAPHICS
+                renderCorePatternLayout
+                2
+                (V.singleton $ renderStateImageDSs ! imageIndex)
+                V.empty
         
         _ -> pure () 
 
@@ -469,8 +503,8 @@ recordRenderStateColorCmd RenderCore {..} Renderer {..} RenderState {..} pattern
 
     Vk.cmdDrawIndexed renderStateCommandBuffer 6 1 0 0 0
 
-renderRenderStateTargetBase :: (MonadIO m) => RenderCore -> Renderer px -> RenderState -> Graphics -> BaseRenderTarget px -> Vk.Extent2D -> ImageSet i -> Maybe Vk.Semaphore -> m (m ())
-renderRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graphics BaseRenderTarget {..} size imageSet wait = do
+renderRenderStateTargetBase :: (MonadIO m) => RenderCore -> Renderer px -> RenderState -> Graphics -> BaseRenderTarget px -> Vk.Extent2D -> Maybe Vk.Semaphore -> m (m ())
+renderRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graphics BaseRenderTarget {..} size wait = do
     let Environment {..} = renderCoreEnvironment
     let Vk.Extent2D {
         Vk.width = width,
@@ -485,7 +519,6 @@ renderRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graph
         (fromIntegral width)
         (fromIntegral height)
         BaseRenderTarget {..}
-        imageSet
 
     Vk.resetFences environmentDevice (V.singleton renderStateFence)
 
@@ -504,12 +537,12 @@ renderRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graph
 
     pure $ void $ Vk.waitForFences environmentDevice (V.singleton renderStateFence) True maxBound
 
-renderRenderStateTarget :: (MonadIO m) => RenderCore -> Renderer px -> RenderState -> Graphics -> RenderTarget px -> ImageSet i -> Maybe Vk.Semaphore -> m (m ())
-renderRenderStateTarget RenderCore {..} Renderer {..} RenderState {..} graphics RenderTarget {..} imageSet =
-    renderRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graphics renderTargetBase renderTargetSize imageSet
+renderRenderStateTarget :: (MonadIO m) => RenderCore -> Renderer px -> RenderState -> Graphics -> RenderTarget px -> Maybe Vk.Semaphore -> m (m ())
+renderRenderStateTarget RenderCore {..} Renderer {..} RenderState {..} graphics RenderTarget {..} =
+    renderRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graphics renderTargetBase renderTargetSize
 
-renderRenderStateTargetSwapchain :: (MonadIO m) => RenderCore -> Renderer px -> RenderStateSwapchain -> Graphics -> SwapchainRenderTarget px -> ImageSet i -> m (Int, m ())
-renderRenderStateTargetSwapchain RenderCore {..} Renderer {..} RenderStateSwapchain {..} graphics SwapchainRenderTarget {..} imageSet = do
+renderRenderStateTargetSwapchain :: (MonadIO m) => RenderCore -> Renderer px -> RenderStateSwapchain -> Graphics -> SwapchainRenderTarget px -> m (Int, m ())
+renderRenderStateTargetSwapchain RenderCore {..} Renderer {..} RenderStateSwapchain {..} graphics SwapchainRenderTarget {..} = do
     let Environment {..} = renderCoreEnvironment
         RenderState {..} = renderStateBase
 
@@ -528,7 +561,6 @@ renderRenderStateTargetSwapchain RenderCore {..} Renderer {..} RenderStateSwapch
         graphics
         (renderTargetBase ! index)
         renderTargetSize
-        imageSet
         (Just renderStateImageSemaphore)
 
     _ <- Vk.queuePresentKHR

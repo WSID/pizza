@@ -1,3 +1,6 @@
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE RankNTypes #-}
+
 module Graphics.Pizza.Graphic (
     module Graphics.Pizza.Graphic.Curve,
     module Graphics.Pizza.Graphic.Dash,
@@ -19,6 +22,7 @@ module Graphics.Pizza.Graphic (
 -- linear
 import Linear
 
+import Graphics.Pizza.Device.Image
 import Graphics.Pizza.Graphic.Curve
 import Graphics.Pizza.Graphic.Dash
 import Graphics.Pizza.Graphic.Stroke
@@ -73,7 +77,7 @@ data Pattern =
     PatternSolid (V4 Float) |
     PatternLinear (V2 Float) (V2 Float) (V4 Float) (V4 Float) |
     PatternRadial (V2 Float) Float (V4 Float) (V4 Float) |
-    PatternImage Int Transform Float
+    forall px. PatternImage (Image px) Transform Float
 
 applyOpacityV :: Float -> V4 Float -> V4 Float
 applyOpacityV opacity (V4 r g b a) = V4 r g b (a * opacity)

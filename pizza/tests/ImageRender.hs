@@ -37,7 +37,7 @@ makeRenderedImage graphics = do
     exchange <- newExchangeN renderCore (200 * 200)
 
     -- Render image from graphic. It happens on GPU.
-    _ <- renderRenderStateTarget renderCore renderer renderState graphics renderTarget noImageSet Nothing
+    _ <- renderRenderStateTarget renderCore renderer renderState graphics renderTarget Nothing
 
     -- Wait image to exchange, to access pixels in CPU.
     join $ writeExchangeRenderTarget renderCore exchange renderTarget (Just (renderStateSemaphore renderState))

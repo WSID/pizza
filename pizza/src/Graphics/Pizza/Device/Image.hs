@@ -5,20 +5,16 @@ module Graphics.Pizza.Device.Image where
 
 import Control.Monad.IO.Class
 import Data.Bits
-import Data.Traversable
 import Foreign.Ptr
 
 import qualified Data.Vector as V
-import Data.Vector (Vector)
 
 import qualified Vulkan as Vk
-import qualified Vulkan.CStruct.Extends as Vk
 
 import qualified VulkanMemoryAllocator as Vma
 
 import Graphics.Pizza.Device.Environment
 import Graphics.Pizza.Device.Format
-import Graphics.Pizza.Device.RenderCore
 
 data Image px = Image {
     imageSize :: Vk.Extent2D,
@@ -120,54 +116,3 @@ freeImage Environment {..} Image {..} = do
     Vk.destroySampler environmentDevice imageSampler Nothing
     Vk.destroyImageView environmentDevice imageView Nothing
     Vma.destroyImage environmentAllocator imageObject imageAlloc
-
-
-
-newtype ImageSet px = ImageSet {
-    imageSetDescriptorSets :: Vector Vk.DescriptorSet
-}
-
-newImageSet :: (MonadIO m) => RenderCore -> Vector (Image px) -> m (ImageSet px)
-newImageSet RenderCore {..} images = do
-    let Environment {..} = renderCoreEnvironment
-    descriptorSets <- for images $ \img -> do
-        descriptorSet <- Vk.allocateDescriptorSets
-            environmentDevice
-            Vk.DescriptorSetAllocateInfo {
-                Vk.next = (),
-                Vk.descriptorPool = renderCoreDescriptorPool,
-                Vk.setLayouts = V.fromList [ renderCorePatternImageDSLayout ]
-            }
-        pure (img, V.head descriptorSet)
-    
-    let descriptorSetWrite = flip fmap descriptorSets $ \(img, ds) ->
-            Vk.SomeStruct Vk.WriteDescriptorSet {
-                Vk.next = (),
-                Vk.dstSet = ds,
-                Vk.dstBinding = 0,
-                Vk.dstArrayElement = 0,
-                Vk.descriptorCount = 1,
-                Vk.descriptorType = Vk.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                Vk.bufferInfo = V.empty,
-                Vk.imageInfo = V.singleton Vk.DescriptorImageInfo {
-                    Vk.sampler = imageSampler img,
-                    Vk.imageView = imageView img,
-                    Vk.imageLayout = Vk.IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                },
-                Vk.texelBufferView = V.empty
-            }
-    
-    Vk.updateDescriptorSets
-        environmentDevice
-        descriptorSetWrite
-        V.empty
-
-    pure $ ImageSet $ fmap snd descriptorSets
-
-freeImageSet :: (MonadIO m) => RenderCore -> ImageSet b -> m ()
-freeImageSet RenderCore {..} ImageSet {..} =
-    let Environment {..} = renderCoreEnvironment in
-    Vk.freeDescriptorSets environmentDevice renderCoreDescriptorPool imageSetDescriptorSets
-
-noImageSet :: ImageSet a
-noImageSet = ImageSet V.empty

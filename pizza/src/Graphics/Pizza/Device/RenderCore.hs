@@ -88,7 +88,7 @@ newRenderCore renderCoreEnvironment = do
         environmentDevice
         Vk.zero { -- Vk.DescriptorPoolCreateInfo
             Vk.flags = Vk.DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
-            Vk.maxSets = 32,
+            Vk.maxSets = 128,
             Vk.poolSizes = V.fromList [
                     Vk.DescriptorPoolSize Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER 32,
                     Vk.DescriptorPoolSize Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC 32,
