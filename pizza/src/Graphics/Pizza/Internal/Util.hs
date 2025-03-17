@@ -2,7 +2,6 @@ module Graphics.Pizza.Internal.Util where
 
 import Linear
 
-
 {- Dense Vector Polynomial for scalar input
  -}
 newtype VPoly = VPoly { factors :: [V2 Float] } deriving (Eq, Show, Read)

@@ -7,6 +7,7 @@ module Graphics.Pizza.Device.RenderTarget where
 import Control.Monad.IO.Class
 
 import Data.Bits
+import Data.Proxy
 import Data.Foldable
 
 import Foreign.Ptr
@@ -24,6 +25,7 @@ import qualified VulkanMemoryAllocator as Vma
 
 -- pizza
 import Graphics.Pizza.Device.Environment
+import Graphics.Pizza.Device.Format
 import Graphics.Pizza.Device.Renderer
 import Graphics.Pizza.Device.RenderCore
 
@@ -132,8 +134,8 @@ renderTargetAttachmentsFramebuffer RenderCore {..} Renderer {..} RenderTargetAtt
 
 
 
-newBaseRenderTarget :: (MonadIO m) => RenderCore -> Renderer px -> RenderTargetAttachments -> Vk.Image -> Int -> Int -> m (BaseRenderTarget px)
-newBaseRenderTarget RenderCore {..} Renderer {..} attachments image width height = do
+newBaseRenderTarget :: (MonadIO m, Format px) => RenderCore -> Renderer px -> RenderTargetAttachments -> Vk.Image -> Int -> Int -> m (BaseRenderTarget px)
+newBaseRenderTarget RenderCore {..} renderer attachments image width height = do
     let Environment {..} = renderCoreEnvironment
     renderTargetImageView <- Vk.createImageView
         environmentDevice
@@ -142,7 +144,7 @@ newBaseRenderTarget RenderCore {..} Renderer {..} attachments image width height
             Vk.flags = zeroBits,
             Vk.image = image,
             Vk.viewType = Vk.IMAGE_VIEW_TYPE_2D,
-            Vk.format = rendererImageFormat,
+            Vk.format = formatOf $ asProxyTypeOf undefined renderer,
             Vk.components = Vk.ComponentMapping
                 Vk.COMPONENT_SWIZZLE_IDENTITY
                 Vk.COMPONENT_SWIZZLE_IDENTITY
@@ -158,7 +160,7 @@ newBaseRenderTarget RenderCore {..} Renderer {..} attachments image width height
         }
         Nothing
 
-    renderTargetFramebuffer <- renderTargetAttachmentsFramebuffer RenderCore {..} Renderer {..} attachments renderTargetImageView width height
+    renderTargetFramebuffer <- renderTargetAttachmentsFramebuffer RenderCore {..} renderer attachments renderTargetImageView width height
 
     pure BaseRenderTarget {..}
 
@@ -207,8 +209,8 @@ recordBaseRenderTarget cmdbuf Renderer {..} width height BaseRenderTarget {..} i
 
 
 
-newRenderTarget :: (MonadIO m) => RenderCore -> Renderer px -> Int -> Int -> m (RenderTarget px)
-newRenderTarget RenderCore {..} Renderer {..} width height = do
+newRenderTarget :: (MonadIO m, Format px) => RenderCore -> Renderer px -> Int -> Int -> m (RenderTarget px)
+newRenderTarget RenderCore {..} renderer width height = do
     let Environment {..} = renderCoreEnvironment
     let widthw = fromIntegral width
         heightw = fromIntegral height
@@ -220,7 +222,7 @@ newRenderTarget RenderCore {..} Renderer {..} width height = do
             Vk.next = (),
             Vk.flags = zeroBits,
             Vk.imageType = Vk.IMAGE_TYPE_2D,
-            Vk.format = rendererImageFormat,
+            Vk.format = formatOf $ asProxyTypeOf undefined renderer,
             Vk.extent = Vk.Extent3D widthw heightw 1,
             Vk.mipLevels = 1,
             Vk.arrayLayers = 1,
@@ -245,7 +247,7 @@ newRenderTarget RenderCore {..} Renderer {..} width height = do
     
     renderTargetAttachments <- newRenderTargetAttachments RenderCore {..} width height
 
-    renderTargetBase <- newBaseRenderTarget RenderCore {..} Renderer {..} renderTargetAttachments renderTargetImage width height
+    renderTargetBase <- newBaseRenderTarget RenderCore {..} renderer renderTargetAttachments renderTargetImage width height
 
     pure RenderTarget {..}
 
@@ -268,7 +270,7 @@ recordRenderTarget cmdbuf renderer RenderTarget {..} =
 
 
 
-newSwapchainRenderTarget :: (MonadIO m) => RenderCore -> Renderer px -> Vk.SwapchainKHR -> Int -> Int -> m (SwapchainRenderTarget px)
+newSwapchainRenderTarget :: (MonadIO m, Format px) => RenderCore -> Renderer px -> Vk.SwapchainKHR -> Int -> Int -> m (SwapchainRenderTarget px)
 newSwapchainRenderTarget RenderCore {..} Renderer {..} renderTargetSwapchain width height = do
     let Environment {..} = renderCoreEnvironment
     let widthw = fromIntegral width

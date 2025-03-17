@@ -37,7 +37,6 @@ data Renderer px = Renderer {
     rendererRenderCore :: RenderCore,
 
     -- Renderer Properties
-    rendererImageFormat :: Vk.Format,
     rendererImageLayout :: Vk.ImageLayout,
 
     -- Render Pass
