@@ -9,6 +9,7 @@ import Control.Monad.IO.Class
 import Data.Bits
 import Data.Proxy
 import Data.Foldable
+import Data.Traversable
 
 import Foreign.Ptr
 
@@ -48,7 +49,7 @@ data RenderTarget px = RenderTarget {
     renderTargetBase :: BaseRenderTarget px
 }
 
-data SwapchainRenderTarget px = SwapchainRenderTarget {
+data SurfaceRenderTarget px = SurfaceRenderTarget {
     renderTargetSize :: Vk.Extent2D,
     renderTargetSwapchain :: Vk.SwapchainKHR,
     renderTargetAttachments :: RenderTargetAttachments,
@@ -207,8 +208,6 @@ recordBaseRenderTarget cmdbuf Renderer {..} width height BaseRenderTarget {..} i
             Vk.SUBPASS_CONTENTS_INLINE
             inside
 
-
-
 newRenderTarget :: (MonadIO m, Format px) => RenderCore -> Renderer px -> Int -> Int -> m (RenderTarget px)
 newRenderTarget RenderCore {..} renderer width height = do
     let Environment {..} = renderCoreEnvironment
@@ -269,27 +268,64 @@ recordRenderTarget cmdbuf renderer RenderTarget {..} =
 
 
 
-
-newSwapchainRenderTarget :: (MonadIO m, Format px) => RenderCore -> Renderer px -> Vk.SwapchainKHR -> Int -> Int -> m (SwapchainRenderTarget px)
-newSwapchainRenderTarget RenderCore {..} Renderer {..} renderTargetSwapchain width height = do
+newSurfaceRenderTarget :: (MonadIO m, Format px) => RenderCore -> Renderer px -> Vk.SurfaceKHR -> Int -> Int -> m (Maybe (SurfaceRenderTarget px))
+newSurfaceRenderTarget RenderCore {..} renderer surface width height = do
     let Environment {..} = renderCoreEnvironment
-    let widthw = fromIntegral width
-        heightw = fromIntegral height
-    let renderTargetSize = Vk.Extent2D widthw heightw
+    let renderTargetSize = Vk.Extent2D {
+        Vk.width = fromIntegral width,
+        Vk.height = fromIntegral height
+    }
+    let imageFormat = formatOf $ asProxyTypeOf undefined renderer
 
-    renderTargetAttachments <- newRenderTargetAttachments RenderCore {..} width height
+    (_, surfaceFormats) <- Vk.getPhysicalDeviceSurfaceFormatsKHR environmentPhysDevice surface
+    let maySurfaceFormat = V.find (\Vk.SurfaceFormatKHR {..} -> format == imageFormat) surfaceFormats
+    for maySurfaceFormat $ \surfaceFormat -> do
+        let Vk.SurfaceFormatKHR {
+            Vk.colorSpace = colorSpace
+        } = surfaceFormat
 
-    (_, images) <- Vk.getSwapchainImagesKHR environmentDevice renderTargetSwapchain
+        -- Capabilities
+        capability <- Vk.getPhysicalDeviceSurfaceCapabilitiesKHR environmentPhysDevice surface
+        
+        let Vk.SurfaceCapabilitiesKHR {
+            Vk.minImageCount = minImageCount
+        } = capability
 
-    renderTargetBase <- traverse
-        (\image -> newBaseRenderTarget RenderCore {..} Renderer {..} renderTargetAttachments image width height)
-        images
+        let swapchainCreateInfo = Vk.SwapchainCreateInfoKHR {
+            Vk.next = (),
+            Vk.flags = zeroBits,
+            Vk.surface = surface,
+            Vk.minImageCount = minImageCount + 1,
+            Vk.imageFormat = imageFormat,
+            Vk.imageColorSpace = colorSpace,
+            Vk.imageExtent = renderTargetSize,
+            Vk.imageArrayLayers = 1,
+            Vk.imageUsage = Vk.IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+            Vk.imageSharingMode = Vk.SHARING_MODE_EXCLUSIVE,
+            Vk.queueFamilyIndices = V.empty,
+            Vk.preTransform = Vk.SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+            Vk.compositeAlpha = Vk.COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+            Vk.presentMode = Vk.PRESENT_MODE_FIFO_KHR,
+            Vk.clipped = True,
+            Vk.oldSwapchain = Vk.NULL_HANDLE
+        }
 
-    pure SwapchainRenderTarget {..}
+        renderTargetSwapchain <- Vk.createSwapchainKHR environmentDevice swapchainCreateInfo Nothing
+        renderTargetAttachments <- newRenderTargetAttachments RenderCore {..} width height 
 
-freeSwapchainRenderTarget :: (MonadIO m) => RenderCore -> SwapchainRenderTarget px -> m ()
-freeSwapchainRenderTarget RenderCore {..} SwapchainRenderTarget {..} = do
+        (_, images) <- Vk.getSwapchainImagesKHR environmentDevice renderTargetSwapchain
+
+        renderTargetBase <- traverse
+            (\image -> newBaseRenderTarget RenderCore {..} renderer renderTargetAttachments image width height)
+            images
+
+        pure SurfaceRenderTarget {..}
+
+freeSurfaceRenderTarget :: (MonadIO m) => RenderCore -> SurfaceRenderTarget px -> m ()
+freeSurfaceRenderTarget RenderCore {..} SurfaceRenderTarget {..} = do
+    let Environment {..} = renderCoreEnvironment
     traverse_ (freeBaseRenderTarget RenderCore {..}) renderTargetBase
     freeRenderTargetAttachments RenderCore {..} renderTargetAttachments
+    Vk.destroySwapchainKHR environmentDevice renderTargetSwapchain Nothing
 
 

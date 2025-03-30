@@ -541,8 +541,8 @@ renderRenderStateTarget :: (MonadIO m) => RenderCore -> Renderer px -> RenderSta
 renderRenderStateTarget RenderCore {..} Renderer {..} RenderState {..} graphics RenderTarget {..} =
     renderRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graphics renderTargetBase renderTargetSize
 
-renderRenderStateTargetSwapchain :: (MonadIO m) => RenderCore -> Renderer px -> RenderStateSwapchain -> Graphics -> SwapchainRenderTarget px -> m (Int, m ())
-renderRenderStateTargetSwapchain RenderCore {..} Renderer {..} RenderStateSwapchain {..} graphics SwapchainRenderTarget {..} = do
+renderRenderStateTargetSurface :: (MonadIO m) => RenderCore -> Renderer px -> RenderStateSwapchain -> Graphics -> SurfaceRenderTarget px -> m (Int, m ())
+renderRenderStateTargetSurface RenderCore {..} Renderer {..} RenderStateSwapchain {..} graphics SurfaceRenderTarget {..} = do
     let Environment {..} = renderCoreEnvironment
         RenderState {..} = renderStateBase
 

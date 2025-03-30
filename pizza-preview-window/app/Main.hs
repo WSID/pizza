@@ -32,22 +32,17 @@ import qualified Data.Vector as V
 import qualified Graphics.UI.GLFW as GLFW
 
 import qualified Vulkan as Vk
-import qualified Vulkan.Zero as Vk
 
 import qualified Graphics.Pizza as Pz
 
 -- time
 import Data.Time.Clock
 
+type MyFormat = Pz.VBGRA (Pz.UNorm Word8)
+
 data DeviceSelection = DeviceSelection {
     devSelectionScore :: Int,
     devSelectionGraphicQueueFamilyIndex :: Int
-}
-
-data SurfaceState = SurfaceState {
-    surfaceStateSurface :: Vk.SurfaceKHR,
-    surfaceStateMinImage :: Word32,
-    surfaceStateFormat :: Vk.SurfaceFormatKHR
 }
 
 deviceSelection :: Vk.Instance -> Vector BSC.ByteString -> Vk.PhysicalDevice -> IO (Maybe DeviceSelection)
@@ -111,69 +106,14 @@ createEnvironment = do
     Pz.newEnvironmentSimple envOpt
 
 
-createSurfaceState :: Pz.Environment -> GLFW.Window -> IO SurfaceState
-createSurfaceState Pz.Environment {..} window = do
-    -- Create Surface
+createSurface :: Pz.Environment -> GLFW.Window -> IO Vk.SurfaceKHR
+createSurface Pz.Environment {..} window = do
     let instGlfw = castPtr $ Vk.instanceHandle environmentInst
 
-    surfaceStateSurface <- alloca $ \surfacePtr -> do
+    alloca $ \surfacePtr -> do
         res <- GLFW.createWindowSurface instGlfw window nullPtr (castPtr surfacePtr) :: IO Int32
         when (Vk.Result res /= Vk.SUCCESS) $ die ("Cannot create surface from window: Code = " ++ show res)
         peek surfacePtr
-
-    surfaceCapability <- Vk.getPhysicalDeviceSurfaceCapabilitiesKHR
-        environmentPhysDevice
-        surfaceStateSurface
-
-    let Vk.SurfaceCapabilitiesKHR {
-        Vk.minImageCount = surfaceStateMinImage
-    } = surfaceCapability
-
-    (_, sformats) <- Vk.getPhysicalDeviceSurfaceFormatsKHR
-        environmentPhysDevice
-        surfaceStateSurface
-
-    let mformat = V.find (\Vk.SurfaceFormatKHR {..} -> format == Vk.FORMAT_B8G8R8A8_UNORM) sformats
-    let surfaceStateFormat = case mformat of
-            Just v -> v
-            Nothing -> error "Cannot find format!"
-
-    pure SurfaceState {..}
-
-
-destroySurfaceState :: Pz.Environment -> SurfaceState -> IO ()
-destroySurfaceState Pz.Environment {..} SurfaceState {..} =
-    Vk.destroySurfaceKHR environmentInst surfaceStateSurface Nothing
-
-
-createSwapchain :: Pz.Environment -> SurfaceState -> Int -> Int -> IO Vk.SwapchainKHR
-createSwapchain Pz.Environment {..} SurfaceState {..} width height = do
-    let swapchainStateSize = Vk.Extent2D {
-        Vk.width = fromIntegral width,
-        Vk.height = fromIntegral height
-    }
-
-    let Vk.SurfaceFormatKHR {
-        Vk.format = imageFormat,
-        Vk.colorSpace = imageColorSpace
-    } = surfaceStateFormat
-
-    let swapchainCreateInfo = (Vk.zero :: Vk.SwapchainCreateInfoKHR '[]) {
-        Vk.surface = surfaceStateSurface,
-        Vk.minImageCount = surfaceStateMinImage + 1,
-        Vk.imageFormat = imageFormat,
-        Vk.imageColorSpace = imageColorSpace,
-        Vk.imageExtent = swapchainStateSize,
-        Vk.imageArrayLayers = 1,
-        Vk.imageUsage = Vk.IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-        Vk.imageSharingMode = Vk.SHARING_MODE_EXCLUSIVE,
-        Vk.preTransform = Vk.SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
-        Vk.presentMode = Vk.PRESENT_MODE_FIFO_KHR,
-        Vk.compositeAlpha = Vk.COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-        Vk.clipped = True
-    }
-
-    Vk.createSwapchainKHR environmentDevice swapchainCreateInfo Nothing
 
 makeGraphic :: Pz.Image px -> Float -> Pz.Graphics
 makeGraphic image time = let env = Pz.defPaintingEnv { Pz.paintingThickness = 10 }
@@ -286,13 +226,14 @@ main = do
         Nothing -> die "Window initialization failed."
 
     (width, height) <- GLFW.getWindowSize win
-
-    surfaceState <- createSurfaceState environment win
-    swapchain <- createSwapchain environment surfaceState width height
-
+    surface <- createSurface environment win
     renderCore <- Pz.newRenderCore environment
+
     renderer <- Pz.newRenderer renderCore Vk.IMAGE_LAYOUT_PRESENT_SRC_KHR :: IO (Pz.Renderer (Pz.VBGRA (Pz.UNorm Word8)))
-    renderTarget <- Pz.newSwapchainRenderTarget renderCore renderer swapchain width height
+    mayRenderTarget <- Pz.newSurfaceRenderTarget renderCore renderer surface width height
+    let renderTarget = case mayRenderTarget of
+            Just swapchain -> swapchain
+            Nothing -> error "Cannot find format."
     renderState <- Pz.newRenderStateSwapchain renderCore
 
     image <- makeWaveImage renderCore 100 100
@@ -308,7 +249,7 @@ main = do
             let timeDiff = realToFrac $ diffUTCTime timeFrameStart timeStart
             let graphics = makeGraphic image timeDiff
 
-            (_, presentWait) <- Pz.renderRenderStateTargetSwapchain renderCore renderer renderState graphics renderTarget
+            (_, presentWait) <- Pz.renderRenderStateTargetSurface renderCore renderer renderState graphics renderTarget
             timeFrameDone <- getCurrentTime
             presentWait
 
@@ -327,11 +268,10 @@ main = do
     Pz.freeImage environment image
 
     Pz.freeRenderStateSwapchain renderCore renderState
-    Pz.freeSwapchainRenderTarget renderCore renderTarget
+    Pz.freeSurfaceRenderTarget renderCore renderTarget
     Pz.freeRenderer renderer
     Pz.freeRenderCore renderCore
-    Vk.destroySwapchainKHR (Pz.environmentDevice environment) swapchain Nothing
-    destroySurfaceState environment surfaceState
+    Vk.destroySurfaceKHR (Pz.environmentInst environment) surface Nothing
 
     GLFW.destroyWindow win
 
