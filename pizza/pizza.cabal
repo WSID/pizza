@@ -88,7 +88,7 @@ library
 
     -- Other library packages from which modules are imported.
     build-depends:
-        base ^>=4.17.2.1,
+        base,
         bytestring,
         vector,
         vulkan,
@@ -112,7 +112,7 @@ test-suite tests
         TestRendering
 
     build-depends:
-        base ^>=4.17.2.1,
+        base,
         HUnit,
         transformers,
         bytestring,
