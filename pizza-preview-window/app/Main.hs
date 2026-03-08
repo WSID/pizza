@@ -12,6 +12,7 @@ import Data.Word
 import Data.Bits
 import Data.IORef
 import Data.Function
+import Data.Foldable
 
 import Foreign.Ptr
 import Foreign.Storable
@@ -20,8 +21,6 @@ import Foreign.Marshal.Alloc
 import System.Exit
 
 import Numeric
-
-import Linear
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
@@ -118,6 +117,12 @@ createSurface Pz.Environment {..} window = do
         peek surfacePtr
 
 
+makeDemos :: Pz.RenderCore -> IO [Demo]
+makeDemos renderCore = sequence
+    [ makeBasicDemo renderCore 100 100
+    ]
+
+
 main :: IO ()
 main = do
     initSucc <- GLFW.init
@@ -149,18 +154,40 @@ main = do
             Nothing -> error "Cannot find format."
     renderState <- Pz.newRenderStateSwapchain renderCore
 
-    demo <- makeBasicDemo renderCore 100 100
-
     keepAlive <- newIORef True
     GLFW.setWindowCloseCallback win $ Just (\_ -> writeIORef keepAlive False)
     GLFW.showWindow win
 
+    demos <- makeDemos renderCore
+
     timeStart <- getCurrentTime
+    demoRef <- newIORef (0, timeStart)
+
+    GLFW.setKeyCallback win $ Just $ \_ key _scancode _keyState _mod -> do
+        when (_keyState == GLFW.KeyState'Released) $ do
+            let demoCount = length demos
+            (demoIndex, _) <- readIORef demoRef
+
+            let demoIndexPred = pred (if demoIndex /= 0 then demoIndex else demoCount)
+            let demoIndexSucc = let ni = succ demoIndex in if ni == demoCount then 0 else ni
+
+            let mayNextDemoIndex = case key of
+                    GLFW.Key'A -> Just demoIndexPred
+                    GLFW.Key'Left -> Just demoIndexPred
+                    GLFW.Key'D -> Just demoIndexSucc
+                    GLFW.Key'Right -> Just demoIndexSucc
+                    _ -> Nothing
+
+            for_ mayNextDemoIndex $ \nextDemoIndex -> do
+                demoTimeStart <- getCurrentTime
+                writeIORef demoRef (nextDemoIndex, demoTimeStart)
+
 
     let loop recur timePrevFrame = do
             timeFrameStart <- getCurrentTime
-            let timeDiff = realToFrac $ diffUTCTime timeFrameStart timeStart
-            let graphics = demoGraphic demo timeDiff
+            (demoIndex, demoTimeStart) <- readIORef demoRef
+            let timeDiff = realToFrac $ diffUTCTime timeFrameStart demoTimeStart
+            let graphics = demoGraphic (demos !! demoIndex) timeDiff
 
             (_, presentWait) <- Pz.renderRenderStateTargetSurface renderCore renderer renderState graphics renderTarget
             timeFrameDone <- getCurrentTime
@@ -178,7 +205,7 @@ main = do
 
     Vk.deviceWaitIdle (Pz.environmentDevice environment)
 
-    demoFree demo
+    for_ demos demoFree
 
     Pz.freeRenderStateSwapchain renderCore renderState
     Pz.freeSurfaceRenderTarget renderCore renderTarget
