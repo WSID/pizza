@@ -2,6 +2,7 @@ module Demo where
 
 import Control.Monad
 
+import Data.Foldable
 import Data.Word
 
 import Linear
@@ -111,3 +112,71 @@ makeWaveImage renderCore width height = do
 
     Pz.freeExchange renderCore exchange
     pure image
+
+
+
+-- Curve demo
+
+makeGraphDemo :: IO Demo
+makeGraphDemo = pure $ Demo
+    { demoGraphic = makeGraphGraphics
+    , demoFree = pure ()
+    }
+
+makeGraphGraphics :: Float -> Pz.Graphics
+makeGraphGraphics _time = let env = Pz.defPaintingEnv { Pz.paintingThickness = 10 }
+    in flip Pz.runPainting_ env $ do
+
+        Pz.localThickness (const 2) $ do
+
+            -- Paint Grid
+            Pz.localPattern (const $ Pz.PatternSolid (V4 0.5 0.5 0.5 1.0)) $ do
+                -- X grid
+                for_ ([200, 200 - 50 .. 0] <> [200, 200 + 50 .. 400]) $ \x -> do
+                    Pz.paintStrokeOpen (Pz.polygon [V2 x 0, V2 x 400])
+                -- Y grid
+                for_ ([200, 200 - 50 .. 0] <> [200, 200 + 50 .. 400]) $ \y -> do
+                    Pz.paintStrokeOpen (Pz.polygon [V2 0 y, V2 400 y])
+
+
+            -- Paint Graph
+
+            Pz.localPattern (const $ Pz.PatternSolid (V4 1 1 1 1)) $ do
+                Pz.paintStrokeOpen (Pz.Path [Pz.PathPoint (V2 0 400), Pz.PathPoint (V2 400 0)])
+
+            let g1 x = x * x    -- square
+
+            Pz.localPattern (const $ Pz.PatternSolid (V4 1.0  0.25  0.25  1.0)) $ do
+                Pz.paintStrokeOpen (Pz.Path [Pz.PathCurve $ makeGraphCurve g1])
+
+            let g2 x = sin x    -- sin
+
+            Pz.localPattern (const $ Pz.PatternSolid (V4 0.25  1.0  0.25  1.0)) $ do
+                Pz.paintStrokeOpen (Pz.Path [Pz.PathCurve $ makeGraphCurve g2])
+
+            let g3 x = cos x    -- sin
+
+            Pz.localPattern (const $ Pz.PatternSolid (V4 1.0  0.25  1.0  1.0)) $ do
+                Pz.paintStrokeOpen (Pz.Path [Pz.PathCurve $ makeGraphCurve g3])
+
+            let g4 x = exp x    -- exp
+
+            Pz.localPattern (const $ Pz.PatternSolid (V4 0.25  0.25  1.0  1.0)) $ do
+                Pz.paintStrokeOpen (Pz.Path [Pz.PathCurve $ makeGraphCurve g4])
+
+            let g5 x = recip (1 + exp (negate x))
+
+            Pz.localPattern (const $ Pz.PatternSolid (V4 0.25  1.0  1.0  1.0)) $ do
+                Pz.paintStrokeOpen (Pz.Path [Pz.PathCurve $ makeGraphCurve g5])
+
+
+
+makeGraphCurve :: (Float -> Float) -> Pz.Curve
+makeGraphCurve func = Pz.Curve
+    { Pz.curvePosition = \a ->
+        let fx = (a * 400 - 200) / 50
+        in V2 (400 * a) (200 - (func fx * 50))
+    , Pz.curveDirection = \a ->
+        let fx = (a * 400 - 200) / 50
+        in normalize $ V2 0.02 (func (fx - 0.01) - func (fx + 0.01))
+    }
