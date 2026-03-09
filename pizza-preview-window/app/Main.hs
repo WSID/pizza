@@ -121,6 +121,7 @@ makeDemos :: Pz.RenderCore -> IO [Demo]
 makeDemos renderCore = sequence
     [ makeBasicDemo renderCore 100 100
     , makeGraphDemo
+    , makeRoadDemo
     ]
 
 

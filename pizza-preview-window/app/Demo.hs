@@ -117,6 +117,10 @@ makeWaveImage renderCore width height = do
 
 -- Curve demo
 
+-- | A Pizza Demo that shows graph plotting.
+--
+-- Shows off custom curve feature.
+--
 makeGraphDemo :: IO Demo
 makeGraphDemo = pure $ Demo
     { demoGraphic = makeGraphGraphics
@@ -170,7 +174,13 @@ makeGraphGraphics _time = let env = Pz.defPaintingEnv { Pz.paintingThickness = 1
                 Pz.paintStrokeOpen (Pz.Path [Pz.PathCurve $ makeGraphCurve g5])
 
 
-
+-- | Make curve from function.
+--
+-- `makeGraphCurve func` will be a curve that plots `func x` where `x in [-4 .. 4]`.
+--
+-- The plot is remapped from [V2 (-4) (-4) .. V2 4 4] to [V2 0 0 .. V2 400 400].
+-- Also flipped upside down as pizza and math plotting has opposite Y direction.
+--
 makeGraphCurve :: (Float -> Float) -> Pz.Curve
 makeGraphCurve func = Pz.Curve
     { Pz.curvePosition = \a ->
@@ -180,3 +190,51 @@ makeGraphCurve func = Pz.Curve
         let fx = (a * 400 - 200) / 50
         in normalize $ V2 0.02 (func (fx - 0.01) - func (fx + 0.01))
     }
+
+
+-- Outline Demo
+
+
+-- | A Pizza Demo that shows a village with road ways.
+--
+-- This shows off outline features.
+makeRoadDemo :: IO Demo
+makeRoadDemo = pure $ Demo
+    { demoGraphic = makeRoadGraphics
+    , demoFree = pure ()
+    }
+
+makeRoadGraphics :: Float -> Pz.Graphics
+makeRoadGraphics _time = flip Pz.runPainting_ Pz.defPaintingEnv $ do
+    -- Draw Landscape
+    Pz.localPattern (const $ Pz.PatternSolid (V4 0.6 1.0 0.5 1.0)) $ do
+        Pz.paintFillShaping $ do
+            Pz.shapingPathing $ do
+                Pz.pathingPoint $ V2 0 0
+                Pz.pathingPoint $ V2 400 0
+                Pz.pathingPoint $ V2 400 400
+                Pz.pathingPoint $ V2 0 400
+
+    let Pz.Pathing _ road = do
+            Pz.pathingCurve $ Pz.arc (V2 0 200) 100 (0.5 * pi) (0)
+            Pz.pathingCurve $ Pz.bezier
+                (V2 100 200)
+                [ V2 100 0
+                , V2 300 50
+                , V2 300 300
+                ]
+                (V2 400 300)
+
+    -- The road itself
+    Pz.localPattern (const $ Pz.PatternSolid (V4 0.6 0.6 0.6 1.0)) $ do
+        Pz.localThickness (const 50) $ do
+            Pz.paintStrokeOpen road
+
+    -- Center lin
+    Pz.localPattern (const $ Pz.PatternSolid (V4 1 1 1 1)) $ do
+        Pz.localThickness (const 2) $ do
+            Pz.localDashPattern (const $ Just (Pz.DashPattern True (cycle [40, 20]))) $ do
+                Pz.paintStrokeOpen road
+
+    -- TODO: Left, Right side of path.
+    -- TODO: Objects moving on road.
