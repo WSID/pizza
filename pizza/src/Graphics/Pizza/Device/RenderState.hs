@@ -4,7 +4,6 @@
 
 module Graphics.Pizza.Device.RenderState where
 
-import Control.Monad
 import Control.Monad.IO.Class
 
 import Data.Bits
@@ -116,7 +115,6 @@ instance Storable PreparationImage where
 
 
 data RenderState = RenderState {
-    renderStateCommandBuffer :: Vk.CommandBuffer,
     renderStateVertex :: TypedBuffer (V2 Float),
     renderStateIndex :: TypedBuffer (V3 Word32),
     renderStateScreenDS :: Vk.DescriptorSet,
@@ -124,28 +122,12 @@ data RenderState = RenderState {
     renderStateImageDSs :: Vector Vk.DescriptorSet,
     renderStateScreenUniform :: TypedBuffer (V2 Float),
     renderStatePatternUniform :: TypedBuffer (),
-    renderStateTransformUniform :: TypedBuffer (), -- for Transform
-    renderStateSemaphore :: Vk.Semaphore,
-    renderStateFence :: Vk.Fence
-}
-
-data RenderStateSwapchain = RenderStateSwapchain {
-    renderStateBase :: RenderState,
-    renderStateImageSemaphore :: Vk.Semaphore
+    renderStateTransformUniform :: TypedBuffer () -- for Transform
 }
 
 newRenderState :: (MonadIO m) => RenderCore -> m RenderState
 newRenderState RenderCore {..} = do
     let Environment {..} = renderCoreEnvironment
-    commandBuffers <- Vk.allocateCommandBuffers
-        environmentDevice
-        Vk.zero {
-            Vk.commandPool = renderCoreCommandPool,
-            Vk.level = Vk.COMMAND_BUFFER_LEVEL_PRIMARY,
-            Vk.commandBufferCount = 1
-        }
-    let renderStateCommandBuffer = V.head commandBuffers
-
 
     renderStateVertex <- newTypedBufferN renderCoreEnvironment
         Vk.BUFFER_USAGE_VERTEX_BUFFER_BIT 4096
@@ -159,7 +141,7 @@ newRenderState RenderCore {..} = do
             Vk.descriptorPool = renderCoreDescriptorPool,
             Vk.setLayouts = V.fromList [ renderCoreScreenDSLayout, renderCorePatternDSLayout]
         }
-    
+
     renderStateImageDSs <- Vk.allocateDescriptorSets
         environmentDevice
         Vk.zero {
@@ -175,8 +157,6 @@ newRenderState RenderCore {..} = do
     renderStateScreenUniform <- newTypedBufferN renderCoreEnvironment Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 1
     renderStatePatternUniform <- newTypedBufferSized renderCoreEnvironment Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 1024
     renderStateTransformUniform <- newTypedBufferSized renderCoreEnvironment Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 1024
-    renderStateSemaphore <- Vk.createSemaphore environmentDevice Vk.zero Nothing
-    renderStateFence <- Vk.createFence environmentDevice Vk.zero Nothing
 
     Vk.updateDescriptorSets
         environmentDevice
@@ -230,8 +210,6 @@ newRenderState RenderCore {..} = do
 freeRenderState :: (MonadIO m) => RenderCore -> RenderState -> m ()
 freeRenderState RenderCore {..} RenderState {..} = do
     let Environment {..} = renderCoreEnvironment
-    Vk.destroyFence environmentDevice renderStateFence Nothing
-    Vk.destroySemaphore environmentDevice renderStateSemaphore Nothing
     freeTypedBuffer renderCoreEnvironment renderStateScreenUniform
     freeTypedBuffer renderCoreEnvironment renderStatePatternUniform
     freeTypedBuffer renderCoreEnvironment renderStateTransformUniform
@@ -239,26 +217,10 @@ freeRenderState RenderCore {..} RenderState {..} = do
     Vk.freeDescriptorSets environmentDevice renderCoreDescriptorPool (V.fromList [renderStateScreenDS, renderStatePatternDS])
     freeTypedBuffer renderCoreEnvironment renderStateIndex
     freeTypedBuffer renderCoreEnvironment renderStateVertex
-    Vk.freeCommandBuffers environmentDevice renderCoreCommandPool (V.singleton renderStateCommandBuffer)
 
 
-newRenderStateSwapchain :: (MonadIO m) => RenderCore -> m RenderStateSwapchain
-newRenderStateSwapchain RenderCore {..} = do
-    let Environment {..} = renderCoreEnvironment
-    renderStateBase <- newRenderState RenderCore {..}
-    renderStateImageSemaphore <- Vk.createSemaphore environmentDevice Vk.zero Nothing
-
-    pure RenderStateSwapchain {..}
-
-freeRenderStateSwapchain :: (MonadIO m) => RenderCore -> RenderStateSwapchain -> m ()
-freeRenderStateSwapchain RenderCore {..} RenderStateSwapchain {..} = do
-    let Environment {..} = renderCoreEnvironment
-    Vk.destroySemaphore environmentDevice renderStateImageSemaphore Nothing
-    freeRenderState RenderCore {..} renderStateBase
-
-
-setRenderStateTargetBase :: (MonadIO m) => RenderCore -> Renderer px -> RenderState -> Graphics -> Int -> Int -> BaseRenderTarget px -> m ()
-setRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graphics width height BaseRenderTarget {..} = do
+setRenderStateTargetBase :: (MonadIO m) => Vk.CommandBuffer -> RenderCore -> Renderer px -> RenderState -> Graphics -> Int -> Int -> BaseRenderTarget px -> m ()
+setRenderStateTargetBase cmdbuf RenderCore {..} Renderer {..} RenderState {..} graphics width height BaseRenderTarget {..} = do
     let Environment {..} = renderCoreEnvironment
     let renderArea = Vk.Rect2D {
             Vk.offset = Vk.Offset2D 0 0,
@@ -275,8 +237,6 @@ setRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graphics
     iptr <- mapTypedBuffer renderCoreEnvironment renderStateIndex
     uptr <- mapTypedBuffer renderCoreEnvironment renderStatePatternUniform
     tptr <- mapTypedBuffer renderCoreEnvironment renderStateTransformUniform
-
-    Vk.resetCommandBuffer renderStateCommandBuffer zeroBits
 
     let appendPath :: (Int, Int) -> Path -> IO (Int, Int)
         appendPath (pathVi, pathIi) path = do
@@ -302,7 +262,7 @@ setRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graphics
             (nvi, nii) <- foldlM appendPath (vi, ii) (transform trans <$> paths)
 
             recordRenderStateStencilCmd
-                RenderCore {..}
+                cmdbuf
                 Renderer {..}
                 RenderState {..}
                 renderArea
@@ -346,6 +306,7 @@ setRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graphics
             pokeByteOff tptr (uoff + 32) transT
 
             recordRenderStateColorCmd
+                cmdbuf
                 RenderCore {..}
                 Renderer {..}
                 RenderState {..}
@@ -353,22 +314,14 @@ setRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graphics
                 blend
                 (fromIntegral uoff)
                 iindex
-            
+
             let niindex = case pattern of
                     PatternImage {} -> iindex + 1
                     _ -> iindex
 
             pure (nvi, nii, uoff + patOffset, niindex)
 
-    Vk.beginCommandBuffer
-        renderStateCommandBuffer
-        Vk.CommandBufferBeginInfo {
-            Vk.next = (),
-            Vk.flags = Vk.COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-            Vk.inheritanceInfo = Nothing
-        }
-
-    Vk.cmdSetViewport renderStateCommandBuffer 0 $ V.singleton Vk.Viewport {
+    Vk.cmdSetViewport cmdbuf 0 $ V.singleton Vk.Viewport {
         Vk.x = 0,
         Vk.y = 0,
         Vk.width = fromIntegral width,
@@ -377,10 +330,10 @@ setRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graphics
         Vk.maxDepth = 1
     }
 
-    Vk.cmdSetScissor renderStateCommandBuffer 0 $ V.singleton renderArea
+    Vk.cmdSetScissor cmdbuf 0 $ V.singleton renderArea
 
     Vk.cmdBeginRenderPass
-        renderStateCommandBuffer
+        cmdbuf
         Vk.zero {
             Vk.renderPass = rendererRenderPass,
             Vk.framebuffer = renderTargetFramebuffer,
@@ -392,23 +345,38 @@ setRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graphics
         }
         Vk.SUBPASS_CONTENTS_INLINE
 
+    Vk.cmdBindDescriptorSets
+        cmdbuf
+        Vk.PIPELINE_BIND_POINT_GRAPHICS
+        renderCoreStencilPipelineLayout
+        0
+        (V.singleton renderStateScreenDS)
+        V.empty
+
+    Vk.cmdBindDescriptorSets
+        cmdbuf
+        Vk.PIPELINE_BIND_POINT_GRAPHICS
+        renderCorePatternLayout
+        0
+        (V.singleton renderStateScreenDS)
+        V.empty
+
+
     -- This might be useful performance data.
     -- (Represents vertices count and triangle counts)
     _ <- liftIO $ foldlM appendDrawItem (0, 0, 0, 0) drawItems
 
-    Vk.cmdEndRenderPass renderStateCommandBuffer
-
-    Vk.endCommandBuffer renderStateCommandBuffer
+    Vk.cmdEndRenderPass cmdbuf
 
     unmapTypedBuffer renderCoreEnvironment renderStateTransformUniform
     unmapTypedBuffer renderCoreEnvironment renderStatePatternUniform
     unmapTypedBuffer renderCoreEnvironment renderStateIndex
     unmapTypedBuffer renderCoreEnvironment renderStateVertex
 
-recordRenderStateStencilCmd :: (MonadIO m) => RenderCore -> Renderer px -> RenderState -> Vk.Rect2D -> Word32 -> Word32 -> m ()
-recordRenderStateStencilCmd RenderCore {..} Renderer {..} RenderState {..} renderArea indexStart indexCount = do
+recordRenderStateStencilCmd :: (MonadIO m) => Vk.CommandBuffer -> Renderer px -> RenderState -> Vk.Rect2D -> Word32 -> Word32 -> m ()
+recordRenderStateStencilCmd cmdbuf Renderer {..} RenderState {..} renderArea indexStart indexCount = do
     Vk.cmdClearAttachments
-        renderStateCommandBuffer
+        cmdbuf
         (V.singleton Vk.ClearAttachment {
             Vk.aspectMask = Vk.IMAGE_ASPECT_STENCIL_BIT,
             Vk.colorAttachment = 0,
@@ -420,43 +388,27 @@ recordRenderStateStencilCmd RenderCore {..} Renderer {..} RenderState {..} rende
             Vk.layerCount = 1
         })
 
-    Vk.cmdBindDescriptorSets
-        renderStateCommandBuffer
-        Vk.PIPELINE_BIND_POINT_GRAPHICS
-        renderCoreStencilPipelineLayout
-        0
-        (V.singleton renderStateScreenDS)
-        V.empty
-
     Vk.cmdBindPipeline
-        renderStateCommandBuffer
+        cmdbuf
         Vk.PIPELINE_BIND_POINT_GRAPHICS
         rendererStencilPipeline
 
     Vk.cmdBindIndexBuffer
-        renderStateCommandBuffer
+        cmdbuf
         (typedBufferObject renderStateIndex) 0 Vk.INDEX_TYPE_UINT32
 
     Vk.cmdBindVertexBuffers
-        renderStateCommandBuffer
+        cmdbuf
         0
         (V.singleton $ typedBufferObject renderStateVertex)
         (V.singleton 0)
 
-    Vk.cmdDrawIndexed renderStateCommandBuffer (3 * indexCount) 1 (3 * indexStart) 0 0
+    Vk.cmdDrawIndexed cmdbuf (3 * indexCount) 1 (3 * indexStart) 0 0
 
-recordRenderStateColorCmd :: (MonadIO m) => RenderCore -> Renderer px -> RenderState -> Pattern -> Blend -> Word32 -> Int -> m ()
-recordRenderStateColorCmd RenderCore {..} Renderer {..} RenderState {..} pattern blend patOffset imageIndex = do
-    Vk.cmdBindDescriptorSets
-        renderStateCommandBuffer
-        Vk.PIPELINE_BIND_POINT_GRAPHICS
-        renderCorePatternLayout
-        0
-        (V.singleton renderStateScreenDS)
-        V.empty
-
+recordRenderStateColorCmd :: (MonadIO m) => Vk.CommandBuffer -> RenderCore -> Renderer px -> RenderState -> Pattern -> Blend -> Word32 -> Int -> m ()
+recordRenderStateColorCmd cmdbuf RenderCore {..} Renderer {..} RenderState {..} pattern blend patOffset imageIndex = do
     Vk.cmdBindPipeline
-        renderStateCommandBuffer
+        cmdbuf
         Vk.PIPELINE_BIND_POINT_GRAPHICS
         (case pattern of
             PatternSolid _ -> rendererPatternSolid
@@ -466,17 +418,17 @@ recordRenderStateColorCmd RenderCore {..} Renderer {..} RenderState {..} pattern
         )
 
     Vk.cmdBindIndexBuffer
-        renderStateCommandBuffer
+        cmdbuf
         (typedBufferObject renderCoreQuadIndices) 0 Vk.INDEX_TYPE_UINT32
 
     Vk.cmdBindVertexBuffers
-        renderStateCommandBuffer
+        cmdbuf
         0
         (V.singleton $ typedBufferObject renderCoreQuadVertices)
         (V.singleton 0)
 
     Vk.cmdBindDescriptorSets
-        renderStateCommandBuffer
+        cmdbuf
         Vk.PIPELINE_BIND_POINT_GRAPHICS
         renderCorePatternLayout
         1
@@ -486,92 +438,22 @@ recordRenderStateColorCmd RenderCore {..} Renderer {..} RenderState {..} pattern
     case pattern of
         PatternImage _ _ _ -> do
             Vk.cmdBindDescriptorSets
-                renderStateCommandBuffer
+                cmdbuf
                 Vk.PIPELINE_BIND_POINT_GRAPHICS
                 renderCorePatternLayout
                 2
                 (V.singleton $ renderStateImageDSs ! imageIndex)
                 V.empty
-        
-        _ -> pure () 
 
-    
+        _ -> pure ()
+
+
     Vk.cmdSetColorBlendAdvancedEXT
-        renderStateCommandBuffer
+        cmdbuf
         0
         (V.singleton $ blendToBlendState blend)
 
-    Vk.cmdDrawIndexed renderStateCommandBuffer 6 1 0 0 0
-
-renderRenderStateTargetBase :: (MonadIO m) => RenderCore -> Renderer px -> RenderState -> Graphics -> BaseRenderTarget px -> Vk.Extent2D -> Maybe Vk.Semaphore -> m (m ())
-renderRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graphics BaseRenderTarget {..} size wait = do
-    let Environment {..} = renderCoreEnvironment
-    let Vk.Extent2D {
-        Vk.width = width,
-        Vk.height = height
-    } = size
-
-    setRenderStateTargetBase
-        RenderCore {..}
-        Renderer {..}
-        RenderState {..}
-        graphics
-        (fromIntegral width)
-        (fromIntegral height)
-        BaseRenderTarget {..}
-
-    Vk.resetFences environmentDevice (V.singleton renderStateFence)
-
-    let (waitSemaphores, waitDstStageMask) = case wait of
-            Nothing -> (V.empty, V.empty)
-            Just v -> (V.singleton v, V.singleton Vk.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)
-
-    Vk.queueSubmit environmentGraphicsQueue
-        (V.singleton $ Vk.SomeStruct Vk.zero {
-            Vk.waitSemaphores = waitSemaphores,
-            Vk.waitDstStageMask = waitDstStageMask,
-            Vk.commandBuffers = V.singleton $ Vk.commandBufferHandle renderStateCommandBuffer,
-            Vk.signalSemaphores = V.singleton renderStateSemaphore
-        } )
-        renderStateFence
-
-    pure $ void $ Vk.waitForFences environmentDevice (V.singleton renderStateFence) True maxBound
-
-renderRenderStateTarget :: (MonadIO m) => RenderCore -> Renderer px -> RenderState -> Graphics -> RenderTarget px -> Maybe Vk.Semaphore -> m (m ())
-renderRenderStateTarget RenderCore {..} Renderer {..} RenderState {..} graphics RenderTarget {..} =
-    renderRenderStateTargetBase RenderCore {..} Renderer {..} RenderState {..} graphics renderTargetBase renderTargetSize
-
-renderRenderStateTargetSurface :: (MonadIO m) => RenderCore -> Renderer px -> RenderStateSwapchain -> Graphics -> SurfaceRenderTarget px -> m (Int, m ())
-renderRenderStateTargetSurface RenderCore {..} Renderer {..} RenderStateSwapchain {..} graphics SurfaceRenderTarget {..} = do
-    let Environment {..} = renderCoreEnvironment
-        RenderState {..} = renderStateBase
-
-    (_, indexw) <- Vk.acquireNextImageKHR
-        environmentDevice
-        renderTargetSwapchain
-        maxBound -- timeout in nanosecs
-        renderStateImageSemaphore
-        Vk.NULL_HANDLE -- fence
-    let index = fromIntegral indexw
-
-    waitOp <- renderRenderStateTargetBase
-        RenderCore {..}
-        Renderer {..}
-        renderStateBase
-        graphics
-        (renderTargetBase ! index)
-        renderTargetSize
-        (Just renderStateImageSemaphore)
-
-    _ <- Vk.queuePresentKHR
-        environmentGraphicsQueue
-        Vk.zero {
-            Vk.waitSemaphores = V.singleton renderStateSemaphore,
-            Vk.swapchains = V.singleton renderTargetSwapchain,
-            Vk.imageIndices = V.singleton indexw
-        }
-
-    pure (index, waitOp)
+    Vk.cmdDrawIndexed cmdbuf 6 1 0 0 0
 
 
 fanIndices :: [a] -> [V3 a]

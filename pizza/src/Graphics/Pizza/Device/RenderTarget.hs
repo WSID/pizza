@@ -9,13 +9,14 @@ import Control.Monad.IO.Class
 import Data.Bits
 import Data.Proxy
 import Data.Foldable
+import Data.Maybe
 import Data.Traversable
 
 import Foreign.Ptr
 
 -- vector
 import qualified Data.Vector as V
-import Data.Vector (Vector)
+import Data.Vector (Vector, (!))
 
 -- vulkan
 import qualified Vulkan as Vk
@@ -29,6 +30,7 @@ import Graphics.Pizza.Device.Environment
 import Graphics.Pizza.Device.Format
 import Graphics.Pizza.Device.Renderer
 import Graphics.Pizza.Device.RenderCore
+import Control.Monad
 
 data RenderTargetAttachments = RenderTargetAttachments {
     renderTargetStencil :: Vk.Image,
@@ -53,7 +55,7 @@ data SurfaceRenderTarget px = SurfaceRenderTarget {
     renderTargetSize :: Vk.Extent2D,
     renderTargetSwapchain :: Vk.SwapchainKHR,
     renderTargetAttachments :: RenderTargetAttachments,
-    renderTargetBase :: Vector (BaseRenderTarget px)
+    renderTargetBases :: Vector (BaseRenderTarget px, Vk.Semaphore)
 }
 
 newRenderTargetAttachments :: (MonadIO m) => RenderCore -> Int -> Int -> m RenderTargetAttachments
@@ -172,41 +174,6 @@ freeBaseRenderTarget RenderCore {..} BaseRenderTarget {..} = do
     Vk.destroyFramebuffer environmentDevice renderTargetFramebuffer Nothing
     Vk.destroyImageView environmentDevice renderTargetImageView Nothing
 
-recordBaseRenderTarget :: (MonadIO m) => Vk.CommandBuffer -> Renderer px -> Int -> Int -> BaseRenderTarget px -> m r -> m r
-recordBaseRenderTarget cmdbuf Renderer {..} width height BaseRenderTarget {..} inside = do
-    let renderArea = Vk.Rect2D {
-        Vk.offset = Vk.Offset2D 0 0,
-        Vk.extent = Vk.Extent2D (fromIntegral width) (fromIntegral height)
-    }
-
-    Vk.resetCommandBuffer cmdbuf zeroBits
-
-    Vk.useCommandBuffer cmdbuf Vk.CommandBufferBeginInfo {
-        Vk.next = (),
-        Vk.flags = Vk.COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-        Vk.inheritanceInfo = Nothing
-    } $ do
-        Vk.cmdSetViewport cmdbuf 0 $ V.singleton Vk.Viewport {
-            Vk.x = 0,
-            Vk.y = 0,
-            Vk.width = fromIntegral width,
-            Vk.height = fromIntegral height,
-            Vk.minDepth = 0,
-            Vk.maxDepth = 1
-        }
-
-        Vk.cmdSetScissor cmdbuf 0 $ V.singleton renderArea
-
-        Vk.cmdUseRenderPass
-            cmdbuf
-            Vk.zero {
-                Vk.renderPass = rendererRenderPass,
-                Vk.framebuffer = renderTargetFramebuffer,
-                Vk.renderArea = renderArea,
-                Vk.clearValues = V.singleton (Vk.Color $ Vk.Float32 0 0 0 1)
-            }
-            Vk.SUBPASS_CONTENTS_INLINE
-            inside
 
 newRenderTarget :: (MonadIO m, Format px) => RenderCore -> Renderer px -> Int -> Int -> m (RenderTarget px)
 newRenderTarget RenderCore {..} renderer width height = do
@@ -257,15 +224,6 @@ freeRenderTarget RenderCore {..} RenderTarget {..} = do
     freeRenderTargetAttachments RenderCore {..} renderTargetAttachments
     Vma.destroyImage environmentAllocator renderTargetImage renderTargetImageAlloc
 
-recordRenderTarget :: (MonadIO m) => Vk.CommandBuffer -> Renderer px -> RenderTarget px -> m r -> m r
-recordRenderTarget cmdbuf renderer RenderTarget {..} =
-    recordBaseRenderTarget cmdbuf renderer (fromIntegral width) (fromIntegral height) renderTargetBase
-  where
-    Vk.Extent2D {
-        Vk.width = width,
-        Vk.height = height
-    } = renderTargetSize
-
 
 
 newSurfaceRenderTarget :: (MonadIO m, Format px) => RenderCore -> Renderer px -> Vk.SurfaceKHR -> Int -> Int -> m (Maybe (SurfaceRenderTarget px))
@@ -315,17 +273,60 @@ newSurfaceRenderTarget RenderCore {..} renderer surface width height = do
 
         (_, images) <- Vk.getSwapchainImagesKHR environmentDevice renderTargetSwapchain
 
-        renderTargetBase <- traverse
-            (\image -> newBaseRenderTarget RenderCore {..} renderer renderTargetAttachments image width height)
-            images
+        renderTargetBases <- for images $ \image -> do
+            renderTarget <- newBaseRenderTarget
+                RenderCore {..}
+                renderer
+                renderTargetAttachments
+                image
+                width
+                height
+            semaphore <- Vk.createSemaphore
+                environmentDevice
+                Vk.SemaphoreCreateInfo {
+                    Vk.next = (),
+                    Vk.flags = zeroBits
+                }
+                Nothing
+            pure (renderTarget, semaphore)
 
         pure SurfaceRenderTarget {..}
 
 freeSurfaceRenderTarget :: (MonadIO m) => RenderCore -> SurfaceRenderTarget px -> m ()
 freeSurfaceRenderTarget RenderCore {..} SurfaceRenderTarget {..} = do
     let Environment {..} = renderCoreEnvironment
-    traverse_ (freeBaseRenderTarget RenderCore {..}) renderTargetBase
+    for_ renderTargetBases $ \(base, sem ) -> do
+        freeBaseRenderTarget RenderCore {..} base
+        Vk.destroySemaphore environmentDevice sem Nothing
     freeRenderTargetAttachments RenderCore {..} renderTargetAttachments
     Vk.destroySwapchainKHR environmentDevice renderTargetSwapchain Nothing
 
+surfaceRenderTargetAcquireNext :: (MonadIO m) => RenderCore -> SurfaceRenderTarget px -> Maybe Vk.Semaphore -> m (Int, BaseRenderTarget px, Vk.Semaphore)
+surfaceRenderTargetAcquireNext RenderCore {..} SurfaceRenderTarget {..} imageSem = do
+    let Environment {..} = renderCoreEnvironment
+    
+    (_, indexw) <- Vk.acquireNextImageKHR
+        environmentDevice
+        renderTargetSwapchain
+        maxBound -- timeout in nanosecs
+        (fromMaybe Vk.NULL_HANDLE imageSem)
+        Vk.NULL_HANDLE -- fence
 
+    let index = fromIntegral indexw
+        (base, sem) = renderTargetBases ! index
+    
+    pure (index, base, sem)
+
+
+surfaceRenderTargetPresent :: (MonadIO m) => RenderCore -> SurfaceRenderTarget px -> Int -> m ()
+surfaceRenderTargetPresent RenderCore {..} SurfaceRenderTarget {..} index = do
+    let Environment {..} = renderCoreEnvironment
+        waitSem = snd $ renderTargetBases ! index
+
+    void $ Vk.queuePresentKHR
+        environmentGraphicsQueue
+        Vk.zero {
+            Vk.waitSemaphores = V.singleton waitSem,
+            Vk.swapchains = V.singleton renderTargetSwapchain,
+            Vk.imageIndices = V.singleton (fromIntegral index)
+        }

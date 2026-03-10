@@ -42,7 +42,6 @@ data RenderCore = RenderCore {
     
     -- Pools
     renderCoreDescriptorPool :: Vk.DescriptorPool,
-    renderCoreCommandPool :: Vk.CommandPool,
 
     -- Descriptor Set Layout
     renderCoreScreenDSLayout :: Vk.DescriptorSetLayout,
@@ -96,17 +95,6 @@ newRenderCore renderCoreEnvironment = do
                 ]
         }
         Nothing
-
-    -- Command Pool
-
-    renderCoreCommandPool <- Vk.createCommandPool
-        environmentDevice
-        Vk.CommandPoolCreateInfo { -- Vk.CommandPoolCreateInfo
-            Vk.flags = Vk.COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-            Vk.queueFamilyIndex = environmentGraphicsQFI
-        }
-        Nothing
-
 
     -- Layouts : Descriptor Set Layouts
 
@@ -282,7 +270,6 @@ freeRenderCore RenderCore {..} = do
     Vk.destroyDescriptorSetLayout environmentDevice renderCorePatternDSLayout Nothing
     Vk.destroyDescriptorSetLayout environmentDevice renderCoreScreenDSLayout Nothing
 
-    Vk.destroyCommandPool environmentDevice renderCoreCommandPool Nothing
     Vk.destroyDescriptorPool environmentDevice renderCoreDescriptorPool Nothing
 
 

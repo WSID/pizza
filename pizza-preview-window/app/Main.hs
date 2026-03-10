@@ -31,6 +31,8 @@ import qualified Data.Vector as V
 import qualified Graphics.UI.GLFW as GLFW
 
 import qualified Vulkan as Vk
+import qualified Vulkan.Zero as Vk
+import qualified Vulkan.CStruct.Extends as Vk
 
 import qualified Graphics.Pizza as Pz
 
@@ -154,7 +156,10 @@ main = do
     let renderTarget = case mayRenderTarget of
             Just swapchain -> swapchain
             Nothing -> error "Cannot find format."
-    renderState <- Pz.newRenderStateSwapchain renderCore
+    renderState <- Pz.newRenderState renderCore
+    
+    imageSem <- Vk.createSemaphore (Pz.environmentDevice environment) Vk.zero Nothing
+    renderFence <- Vk.createFence (Pz.environmentDevice environment) Vk.zero Nothing
 
     keepAlive <- newIORef True
     GLFW.setWindowCloseCallback win $ Just (\_ -> writeIORef keepAlive False)
@@ -164,6 +169,29 @@ main = do
 
     timeStart <- getCurrentTime
     demoRef <- newIORef (0, timeStart)
+
+    -- Command Buffer
+    cmdpool <- Vk.createCommandPool
+        (Pz.environmentDevice environment)
+        Vk.CommandPoolCreateInfo {
+            Vk.flags =
+                Vk.COMMAND_POOL_CREATE_TRANSIENT_BIT .|.
+                Vk.COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+            Vk.queueFamilyIndex = Pz.environmentGraphicsQFI environment
+        }
+        Nothing
+
+    cmdbufs <- Vk.allocateCommandBuffers
+        (Pz.environmentDevice environment)
+        Vk.CommandBufferAllocateInfo {
+            Vk.commandPool = cmdpool,
+            Vk.level = Vk.COMMAND_BUFFER_LEVEL_PRIMARY,
+            Vk.commandBufferCount = 1
+        }
+
+    let cmdbuf = case V.toList cmdbufs of
+            [cmd] -> cmd
+            _ -> error "Unexpected count of command buffers"
 
     GLFW.setKeyCallback win $ Just $ \_ key _scancode _keyState _mod -> do
         when (_keyState == GLFW.KeyState'Released) $ do
@@ -190,10 +218,56 @@ main = do
             (demoIndex, demoTimeStart) <- readIORef demoRef
             let timeDiff = realToFrac $ diffUTCTime timeFrameStart demoTimeStart
             let graphics = demoGraphic (demos !! demoIndex) timeDiff
+            
+            Vk.resetFences
+                (Pz.environmentDevice environment)
+                (V.singleton renderFence)
 
-            (_, presentWait) <- Pz.renderRenderStateTargetSurface renderCore renderer renderState graphics renderTarget
+            
+            (index, baseRenderTarget, renderSem) <- Pz.surfaceRenderTargetAcquireNext
+                renderCore
+                renderTarget
+                (Just imageSem)
+
+            _ <- Vk.useCommandBuffer
+                cmdbuf
+                Vk.CommandBufferBeginInfo {
+                    Vk.next = (),
+                    Vk.flags = Vk.COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+                    Vk.inheritanceInfo = Nothing
+                } $ do
+                Pz.setRenderStateTargetBase
+                    cmdbuf
+                    renderCore
+                    renderer
+                    renderState
+                    graphics
+                    400
+                    400
+                    baseRenderTarget
+
+            Vk.queueSubmit
+                (Pz.environmentGraphicsQueue environment)
+                (V.singleton $ Vk.SomeStruct Vk.zero {
+                    Vk.waitSemaphores = V.singleton imageSem,
+                    Vk.waitDstStageMask = V.singleton Vk.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                    Vk.commandBuffers = V.singleton (Vk.commandBufferHandle cmdbuf),
+                    Vk.signalSemaphores = V.singleton renderSem
+                } )
+                renderFence
+                
+            Pz.surfaceRenderTargetPresent
+                renderCore
+                renderTarget
+                index
+                
             timeFrameDone <- getCurrentTime
-            presentWait
+            
+            _ <- Vk.waitForFences
+                (Pz.environmentDevice environment)
+                (V.singleton renderFence)
+                True
+                maxBound
 
             let frameInterval = realToFrac $ diffUTCTime timeFrameStart timePrevFrame :: Float
             let renderInterval = realToFrac $ diffUTCTime timeFrameDone timeFrameStart :: Float
@@ -207,9 +281,14 @@ main = do
 
     Vk.deviceWaitIdle (Pz.environmentDevice environment)
 
-    for_ demos demoFree
+    Vk.destroyCommandPool (Pz.environmentDevice environment) cmdpool Nothing
 
-    Pz.freeRenderStateSwapchain renderCore renderState
+    for_ demos demoFree
+    
+    Vk.destroySemaphore (Pz.environmentDevice environment) imageSem Nothing
+    Vk.destroyFence (Pz.environmentDevice environment) renderFence Nothing
+
+    Pz.freeRenderState renderCore renderState
     Pz.freeSurfaceRenderTarget renderCore renderTarget
     Pz.freeRenderer renderer
     Pz.freeRenderCore renderCore

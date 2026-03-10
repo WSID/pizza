@@ -1,11 +1,18 @@
+{-# LANGUAGE DuplicateRecordFields #-}
+
 module Demo where
 
-import Control.Monad
-
+import Data.Bits
 import Data.Foldable
 import Data.Word
 
 import Linear
+
+import qualified Data.Vector as V
+
+import qualified Vulkan as Vk
+import qualified Vulkan.Zero as Vk
+import qualified Vulkan.CStruct.Extends as Vk
 
 import qualified Graphics.Pizza as Pz
 
@@ -105,12 +112,133 @@ makeWaveImage renderCore width height = do
             g = round (sqrt (sp * cp) * 255)
             r = round (cp * 255)
 
-    exchange <- Pz.newExchangeN renderCore (width * height)
-    image <- Pz.newImage (Pz.renderCoreEnvironment renderCore) width height
-    Pz.writeExchangeN renderCore exchange (fmap mapper coordinates)
-    join $ Pz.copyExchangeToImage renderCore exchange image Nothing
+    let environment = Pz.renderCoreEnvironment renderCore
 
-    Pz.freeExchange renderCore exchange
+    -- Command Buffer
+    cmdpool <- Vk.createCommandPool
+        (Pz.environmentDevice environment)
+        Vk.CommandPoolCreateInfo {
+            Vk.flags = Vk.COMMAND_POOL_CREATE_TRANSIENT_BIT,
+            Vk.queueFamilyIndex = Pz.environmentGraphicsQFI environment
+        }
+        Nothing
+
+    cmdbufs <- Vk.allocateCommandBuffers
+        (Pz.environmentDevice environment)
+        Vk.CommandBufferAllocateInfo {
+            Vk.commandPool = cmdpool,
+            Vk.level = Vk.COMMAND_BUFFER_LEVEL_PRIMARY,
+            Vk.commandBufferCount = 1
+        }
+
+    let cmdbuf = case V.toList cmdbufs of
+            [cmd] -> cmd
+            _ -> error "Unexpected count of command buffers"
+
+    fence <- Vk.createFence
+        (Pz.environmentDevice environment)
+        Vk.FenceCreateInfo {
+            Vk.next = (),
+            Vk.flags = zeroBits
+        }
+        Nothing
+
+    staging <- Pz.newTypedBufferN environment Vk.BUFFER_USAGE_TRANSFER_SRC_BIT (width * height) :: IO (Pz.TypedBuffer (Pz.VRGBA (Pz.UNorm Word8)))
+    image <- Pz.newImage (Pz.renderCoreEnvironment renderCore) width height
+    Pz.writeTypedBufferN environment staging (fmap mapper coordinates)
+
+    Vk.useCommandBuffer
+        cmdbuf
+        Vk.CommandBufferBeginInfo {
+            Vk.next = (),
+            Vk.flags = Vk.COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+            Vk.inheritanceInfo = Nothing
+        } $ do
+            -- Transit image layout so that we can copy exchange content to image.
+            Vk.cmdPipelineBarrier cmdbuf
+                Vk.PIPELINE_STAGE_TOP_OF_PIPE_BIT
+                Vk.PIPELINE_STAGE_TRANSFER_BIT
+                zeroBits
+                V.empty
+                V.empty
+                (V.singleton $ Vk.SomeStruct Vk.ImageMemoryBarrier {
+                    Vk.next = (),
+                    Vk.srcAccessMask = Vk.ACCESS_NONE,
+                    Vk.dstAccessMask = Vk.ACCESS_TRANSFER_WRITE_BIT,
+                    Vk.oldLayout = Vk.IMAGE_LAYOUT_UNDEFINED,
+                    Vk.newLayout = Vk.IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    Vk.srcQueueFamilyIndex = Vk.QUEUE_FAMILY_IGNORED,
+                    Vk.dstQueueFamilyIndex = Vk.QUEUE_FAMILY_IGNORED,
+                    Vk.image = Pz.imageObject image,
+                    Vk.subresourceRange = Vk.ImageSubresourceRange {
+                        Vk.aspectMask = Vk.IMAGE_ASPECT_COLOR_BIT,
+                        Vk.baseMipLevel = 0,
+                        Vk.levelCount = 1,
+                        Vk.baseArrayLayer = 0,
+                        Vk.layerCount = 1
+                    }
+                })
+
+            -- Copy exchange content to image.
+            _ <- Vk.cmdCopyBufferToImage cmdbuf
+                (Pz.typedBufferObject staging)
+                (Pz.imageObject image)
+                Vk.IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+                (V.singleton Vk.BufferImageCopy {
+                    Vk.bufferOffset = 0,
+                    Vk.bufferRowLength = 0,
+                    Vk.bufferImageHeight = 0,
+                    Vk.imageSubresource = Vk.ImageSubresourceLayers {
+                        Vk.aspectMask = Vk.IMAGE_ASPECT_COLOR_BIT,
+                        Vk.mipLevel = 0,
+                        Vk.baseArrayLayer = 0,
+                        Vk.layerCount = 1
+                    },
+                    Vk.imageOffset = Vk.Offset3D 0 0 0,
+                    Vk.imageExtent = Vk.Extent3D (fromIntegral width) (fromIntegral height) 1
+                })
+
+            -- Transfer image layout so that it can be sampled from shader.
+            Vk.cmdPipelineBarrier cmdbuf
+                Vk.PIPELINE_STAGE_TRANSFER_BIT
+                Vk.PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+                zeroBits
+                V.empty
+                V.empty
+                (V.singleton $ Vk.SomeStruct Vk.ImageMemoryBarrier {
+                    Vk.next = (),
+                    Vk.srcAccessMask = Vk.ACCESS_TRANSFER_WRITE_BIT,
+                    Vk.dstAccessMask = Vk.ACCESS_SHADER_READ_BIT,
+                    Vk.oldLayout = Vk.IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    Vk.newLayout = Vk.IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    Vk.srcQueueFamilyIndex = Vk.QUEUE_FAMILY_IGNORED,
+                    Vk.dstQueueFamilyIndex = Vk.QUEUE_FAMILY_IGNORED,
+                    Vk.image = Pz.imageObject image,
+                    Vk.subresourceRange = Vk.ImageSubresourceRange {
+                        Vk.aspectMask = Vk.IMAGE_ASPECT_COLOR_BIT,
+                        Vk.baseMipLevel = 0,
+                        Vk.levelCount = 1,
+                        Vk.baseArrayLayer = 0,
+                        Vk.layerCount = 1
+                    }
+                })
+
+    Vk.queueSubmit
+        (Pz.environmentGraphicsQueue environment)
+        (V.singleton $ Vk.SomeStruct Vk.zero {
+            Vk.commandBuffers = V.singleton $ Vk.commandBufferHandle cmdbuf
+        } )
+        fence
+
+    _ <- Vk.waitForFences
+        (Pz.environmentDevice environment)
+        (V.singleton fence)
+        True
+        maxBound
+
+    Pz.freeTypedBuffer environment staging
+    Vk.destroyFence (Pz.environmentDevice environment) fence Nothing
+    Vk.destroyCommandPool (Pz.environmentDevice environment) cmdpool Nothing
     pure image
 
 
