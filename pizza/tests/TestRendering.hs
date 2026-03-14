@@ -168,28 +168,28 @@ pathCapRound = stroke (StrokeOption 100 strokeJoinMiter) (strokeEndBoth strokeCa
 
 pathDashLine1 :: [Graphics.Pizza.Path]
 pathDashLine1 = dashStroke
-    (DashPattern True [50, 50, 50])
+    [50, 50, 50]
     (StrokeOption 100 strokeJoinMiter)
     strokeEndNone
     (Graphics.Pizza.Path [PathPoint (V2 0 100), PathPoint (V2 200 100)])
 
 pathDashLine2 :: [Graphics.Pizza.Path]
 pathDashLine2 = dashStroke
-    (DashPattern False [50, 50])
+    [0, 50, 50]
     (StrokeOption 100 strokeJoinMiter)
     strokeEndNone
     (Graphics.Pizza.Path [PathPoint (V2 0 100), PathPoint (V2 200 100)])
 
 pathDashCurve1 :: [Graphics.Pizza.Path]
 pathDashCurve1 = dashStroke
-    (DashPattern True [50, 50, 50])
+    [50, 50, 50]
     (StrokeOption 100 strokeJoinMiter)
     strokeEndNone
     (Graphics.Pizza.Path [PathCurve $ arc (V2 0 0) 150 0 (0.5 * pi)])
 
 pathDashCurve2 :: [Graphics.Pizza.Path]
 pathDashCurve2 = dashStroke
-    (DashPattern True [50, 100, 100, 100, 50])
+    [50, 100, 100, 100, 50]
     (StrokeOption 20 strokeJoinMiter)
     strokeEndNone
     (Graphics.Pizza.Path
@@ -201,7 +201,7 @@ pathDashCurve2 = dashStroke
 
 pathDashBox :: [Graphics.Pizza.Path]
 pathDashBox = dashStroke
-    (DashPattern False [60, 60, 120, 60, 120, 60, 120, 60])
+    [0, 60, 60, 120, 60, 120, 60, 120, 60]
     (StrokeOption 20 strokeJoinMiter)
     StrokeClose
     (Graphics.Pizza.Path
@@ -215,7 +215,7 @@ pathDashBox = dashStroke
 
 pathDashBox2 :: [Graphics.Pizza.Path]
 pathDashBox2 = dashStroke
-    (DashPattern True [60, 60, 120, 60, 120, 60, 120, 60])
+    [60, 60, 120, 60, 120, 60, 120, 60]
     (StrokeOption 20 strokeJoinMiter)
     StrokeClose
     (Graphics.Pizza.Path

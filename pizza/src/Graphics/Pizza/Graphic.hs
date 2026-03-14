@@ -89,7 +89,7 @@ applyOpacity opacity (PatternRadial center radius sc ec) = PatternRadial center 
 applyOpacity opacity (PatternImage image trans o) = PatternImage image trans (opacity * o)
 
 
-dashStroke :: DashPattern -> StrokeOption -> StrokeEnd -> Path -> [Path]
+dashStroke :: [Float] -> StrokeOption -> StrokeEnd -> Path -> [Path]
 dashStroke pat option StrokeClose path = case dash True pat path of
     DashClose p -> stroke option StrokeClose p
     Dash ps -> stroke option strokeEndNone =<< ps

@@ -78,7 +78,7 @@ makeBasicGraphic image time = let env = Pz.defPaintingEnv { Pz.paintingThickness
 
         Pz.localTransform (Pz.translate (V2 0 200)) $ do
             Pz.localPattern (const pattern3) $ do
-                Pz.localDashPattern (const $ Just (Pz.DashPattern True (50 + 50 * sin theta : cycle [50, 50, 50, 50]))) $ do
+                Pz.localDashPattern (const (50 + 50 * sin theta : cycle [50, 50, 50, 50])) $ do
                     Pz.localBlend (const Pz.BlendLighten) $ do
                         Pz.paintStrokeClosePathing $ do
                             Pz.pathingCurve $ Pz.arc (V2 300 100) 50 (pi * (-0.5)) (pi * (0.5))
@@ -233,7 +233,7 @@ makeRoadGraphics _time = flip Pz.runPainting_ Pz.defPaintingEnv $ do
     -- Center lin
     Pz.localPattern (const $ Pz.PatternSolid (V4 1 1 1 1)) $ do
         Pz.localThickness (const 2) $ do
-            Pz.localDashPattern (const $ Just (Pz.DashPattern True (cycle [40, 20]))) $ do
+            Pz.localDashPattern (const $ cycle [40, 20]) $ do
                 Pz.paintStrokeOpen road
 
     -- TODO: Left, Right side of path.

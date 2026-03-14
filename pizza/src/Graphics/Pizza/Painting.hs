@@ -75,7 +75,7 @@ data PaintingEnv = PaintingEnv {
         paintingThickness :: Float,
         paintingEndCaps :: (StrokeCap, StrokeCap),
         paintingJoin :: StrokeJoin,
-        paintingDashPattern :: Maybe DashPattern
+        paintingDashPattern :: [Float]
     }
 
 defPaintingEnv :: PaintingEnv
@@ -89,7 +89,7 @@ defPaintingEnv = PaintingEnv {
         paintingThickness = 1.0,
         paintingEndCaps = (strokeCapNone, strokeCapNone),
         paintingJoin = strokeJoinMiter,
-        paintingDashPattern = Nothing
+        paintingDashPattern = []
     }
 
 newtype Painting a = Painting { runPainting :: PaintingEnv -> (a, Graphics) }
@@ -147,7 +147,7 @@ askEndCaps = asksPaintingEnv paintingEndCaps
 askJoin :: Painting StrokeJoin
 askJoin = asksPaintingEnv paintingJoin
 
-askDashPattern :: Painting (Maybe DashPattern)
+askDashPattern :: Painting [Float]
 askDashPattern = asksPaintingEnv paintingDashPattern
 
 
@@ -155,7 +155,7 @@ localPaintingEnv :: (PaintingEnv -> PaintingEnv) -> Painting a -> Painting a
 localPaintingEnv f (Painting p) = Painting (p . f)
 
 localPaintingAttributes :: (DrawAttributes -> DrawAttributes) -> Painting a -> Painting a
-localPaintingAttributes f = localPaintingEnv (\env -> env { paintingAttributes = f $ paintingAttributes env } ) 
+localPaintingAttributes f = localPaintingEnv (\env -> env { paintingAttributes = f $ paintingAttributes env } )
 
 localTransform :: (Transform -> Transform) -> Painting a -> Painting a
 localTransform f = localPaintingAttributes (\attr -> attr { drawTransform = f $ drawTransform attr } )
@@ -178,7 +178,7 @@ localEndCaps f = localPaintingEnv (\env -> env { paintingEndCaps = f $ paintingE
 localJoin :: (StrokeJoin -> StrokeJoin) -> Painting a -> Painting a
 localJoin f = localPaintingEnv (\env -> env { paintingJoin = f $ paintingJoin env } )
 
-localDashPattern :: (Maybe DashPattern -> Maybe DashPattern) -> Painting a -> Painting a
+localDashPattern :: ([Float] -> [Float]) -> Painting a -> Painting a
 localDashPattern f = localPaintingEnv (\env -> env { paintingDashPattern = f $ paintingDashPattern env } )
 
 
@@ -199,9 +199,8 @@ paintStrokeOpen path = Painting $ \env -> (
                 option = StrokeOption (paintingThickness env) (paintingJoin env)
                 ends = uncurry StrokeEnd (paintingEndCaps env)
                 shape = case paintingDashPattern env of
-                    Just dashPattern -> dashStroke dashPattern option ends path
-                    Nothing -> stroke option ends path
-
+                    [] -> stroke option ends path
+                    dashPattern -> dashStroke dashPattern option ends path
             in DrawShape shape (paintingAttributes env)
         ]
     )
@@ -213,8 +212,8 @@ paintStrokeClose path = Painting $ \env -> (
             let
                 strokeOption = StrokeOption (paintingThickness env) (paintingJoin env)
                 shape = case paintingDashPattern env of
-                    Just dashPattern -> dashStroke dashPattern strokeOption StrokeClose path
-                    Nothing -> stroke strokeOption StrokeClose path
+                    [] -> stroke strokeOption StrokeClose path
+                    dashPattern -> dashStroke dashPattern strokeOption StrokeClose path
 
             in DrawShape shape (paintingAttributes env)
         ]

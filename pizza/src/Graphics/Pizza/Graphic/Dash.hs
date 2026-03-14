@@ -7,25 +7,6 @@ import Linear
 import Graphics.Pizza.Graphic.Curve
 import Graphics.Pizza.Graphic.Path
 
-data DashPattern = DashPattern Bool [Float] deriving (Eq, Show)
-
-dashPatternNone :: DashPattern
-dashPatternNone = DashPattern False []
-
-dashPatternFull :: DashPattern
-dashPatternFull = DashPattern True []
-
-dashPatternStartOn :: DashPattern -> Bool
-dashPatternStartOn (DashPattern on _) = on
-
-dashPatternEndOn :: DashPattern -> Bool
-dashPatternEndOn (DashPattern on []) = on
-dashPatternEndOn (DashPattern on [_]) = not on
-dashPatternEndOn (DashPattern on (_: _: ps)) = dashPatternEndOn (DashPattern on ps)
-
-dashPatternCons :: DashPattern -> (Bool, Maybe (Float, DashPattern))
-dashPatternCons (DashPattern on []) = (on, Nothing)
-dashPatternCons (DashPattern on (p: ps)) = (on, Just (p, DashPattern (not on) ps))
 
 data DashState = DashState {
     dashStateOn :: Maybe Path,
@@ -94,15 +75,16 @@ dashPathPart (PathCurve curve) state = go 0 (mkCurveRunner curve 32) state
                     dashStatePattern = remLen: ps
                 }
       where
+        newPath 0 = Path []
         newPath t = Path [ PathCurve (subCurve curveStart t curve) ]
 
 
 
 data Dash = Dash [Path] | DashClose Path
 
-dash :: Bool -> DashPattern -> Path -> Dash
+dash :: Bool -> [Float] -> Path -> Dash
 dash _ _ (Path []) = Dash []
-dash close (DashPattern on pat) path = case (close, finalOn) of
+dash close pattern path = case (close, finalOn) of
 
     -- When we dashing closed path, and we piled up some dash to the end.
     -- In case we dashed something at initial - we connect them.
@@ -116,8 +98,8 @@ dash close (DashPattern on pat) path = case (close, finalOn) of
     _ -> Dash (finalAccum <> maybeToList finalOn)
   where
     initState = DashState {
-            dashStateOn = if on then Just mempty else Nothing,
-            dashStatePattern = pat,
+            dashStateOn = Just mempty,
+            dashStatePattern = pattern,
             dashStateAccum = []
         }
     Path ps = path
@@ -135,4 +117,3 @@ dash close (DashPattern on pat) path = case (close, finalOn) of
         dashPathPart p s
 
     DashState finalOn _ finalAccum = go path initState
-
