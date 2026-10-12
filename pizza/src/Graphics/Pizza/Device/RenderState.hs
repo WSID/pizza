@@ -113,7 +113,6 @@ instance Storable PreparationImage where
             pokeByteOff ptr 40 patternOpacity
 
 
-
 data RenderState = RenderState {
     renderStateVertex :: TypedBuffer (V2 Float),
     renderStateIndex :: TypedBuffer (V3 Word32),
@@ -123,6 +122,14 @@ data RenderState = RenderState {
     renderStateScreenUniform :: TypedBuffer (V2 Float),
     renderStatePatternUniform :: TypedBuffer (),
     renderStateTransformUniform :: TypedBuffer () -- for Transform
+}
+
+-- | Count for render state set up.
+data RenderStateCount = RenderStateCount {
+    renderStateCountVertex :: Int,
+    renderStateCountIndex :: Int,
+    renderStateCountUniform :: Int,
+    renderStateCountImage :: Int
 }
 
 newRenderState :: (MonadIO m) => RenderCore -> m RenderState
@@ -219,7 +226,7 @@ freeRenderState RenderCore {..} RenderState {..} = do
     freeTypedBuffer renderCoreEnvironment renderStateVertex
 
 
-setRenderStateTargetBase :: (MonadIO m) => Vk.CommandBuffer -> RenderCore -> Renderer px -> RenderState -> Graphics -> Int -> Int -> BaseRenderTarget px -> m ()
+setRenderStateTargetBase :: (MonadIO m) => Vk.CommandBuffer -> RenderCore -> Renderer px -> RenderState -> Graphics -> Int -> Int -> BaseRenderTarget px -> m RenderStateCount
 setRenderStateTargetBase cmdbuf RenderCore {..} Renderer {..} RenderState {..} graphics width height BaseRenderTarget {..} = do
     let Environment {..} = renderCoreEnvironment
     let renderArea = Vk.Rect2D {
@@ -251,14 +258,21 @@ setRenderStateTargetBase cmdbuf RenderCore {..} Renderer {..} RenderState {..} g
             pokeArray (advancePtr iptr pathIi) pathIndices
             pure (pathViend, pathIi + pathVcount - 2)
 
-    let appendDrawItem :: (Int, Int, Int, Int) -> DrawItem -> IO (Int, Int, Int, Int)
-        appendDrawItem (vi, ii, uoff, iindex) (DrawShape paths attrs) = do
+    let appendDrawItem :: RenderStateCount -> DrawItem -> IO RenderStateCount
+        appendDrawItem count (DrawShape paths attrs) = do
             let DrawAttributes {
                     drawPattern = pattern,
                     drawTransform = trans,
                     drawBlend = blend,
                     drawOpacity = opacity
                 } = attrs
+                RenderStateCount {
+                    renderStateCountVertex = vi,
+                    renderStateCountIndex = ii,
+                    renderStateCountUniform = uoff,
+                    renderStateCountImage = iindex
+                } = count
+
             (nvi, nii) <- foldlM appendPath (vi, ii) (transform trans <$> paths)
 
             recordRenderStateStencilCmd
@@ -319,7 +333,12 @@ setRenderStateTargetBase cmdbuf RenderCore {..} Renderer {..} RenderState {..} g
                     PatternImage {} -> iindex + 1
                     _ -> iindex
 
-            pure (nvi, nii, uoff + patOffset, niindex)
+            pure RenderStateCount {
+                renderStateCountVertex = nvi,
+                renderStateCountIndex = nii,
+                renderStateCountUniform = uoff + patOffset,
+                renderStateCountImage = niindex
+            }
 
     Vk.cmdSetViewport cmdbuf 0 $ V.singleton Vk.Viewport {
         Vk.x = 0,
@@ -364,7 +383,7 @@ setRenderStateTargetBase cmdbuf RenderCore {..} Renderer {..} RenderState {..} g
 
     -- This might be useful performance data.
     -- (Represents vertices count and triangle counts)
-    _ <- liftIO $ foldlM appendDrawItem (0, 0, 0, 0) drawItems
+    count <- liftIO $ foldlM appendDrawItem (RenderStateCount 0 0 0 0) drawItems
 
     Vk.cmdEndRenderPass cmdbuf
 
@@ -372,6 +391,7 @@ setRenderStateTargetBase cmdbuf RenderCore {..} Renderer {..} RenderState {..} g
     unmapTypedBuffer renderCoreEnvironment renderStatePatternUniform
     unmapTypedBuffer renderCoreEnvironment renderStateIndex
     unmapTypedBuffer renderCoreEnvironment renderStateVertex
+    pure count
 
 recordRenderStateStencilCmd :: (MonadIO m) => Vk.CommandBuffer -> Renderer px -> RenderState -> Vk.Rect2D -> Word32 -> Word32 -> m ()
 recordRenderStateStencilCmd cmdbuf Renderer {..} RenderState {..} renderArea indexStart indexCount = do

@@ -229,7 +229,7 @@ main = do
                 renderTarget
                 (Just imageSem)
 
-            _ <- Vk.useCommandBuffer
+            count <- Vk.useCommandBuffer
                 cmdbuf
                 Vk.CommandBufferBeginInfo {
                     Vk.next = (),
@@ -245,6 +245,12 @@ main = do
                     400
                     400
                     baseRenderTarget
+
+            let vertexCountStr = "(v: " ++ show (Pz.renderStateCountVertex count) ++ ")"
+            let indexCountStr = "(i: " ++ show (Pz.renderStateCountIndex count) ++ ")"
+            let uniformCountStr = "(u: " ++ show (Pz.renderStateCountUniform count) ++ ")"
+            let imageCountStr = "(img: " ++ show (Pz.renderStateCountImage count) ++ ")"
+            putStrLn $ "COUNT: " ++ vertexCountStr ++ " " ++ indexCountStr ++ " " ++ uniformCountStr ++ " " ++ imageCountStr
 
             Vk.queueSubmit
                 (Pz.environmentGraphicsQueue environment)
