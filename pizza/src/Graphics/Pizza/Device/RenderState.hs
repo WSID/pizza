@@ -121,7 +121,10 @@ data RenderState = RenderState {
     renderStateImageDSs :: Vector Vk.DescriptorSet,
     renderStateScreenUniform :: TypedBuffer (V2 Float),
     renderStatePatternUniform :: TypedBuffer (),
-    renderStateTransformUniform :: TypedBuffer () -- for Transform
+    renderStateTransformUniform :: TypedBuffer (), -- for Transform
+    renderStateAllocatedVertices :: Int,
+    renderStateAllocatedIndices :: Int,
+    renderStateAllocatedUniforms :: Int
 }
 
 -- | Count for render state set up.
@@ -135,12 +138,19 @@ data RenderStateCount = RenderStateCount {
 newRenderState :: (MonadIO m) => RenderCore -> m RenderState
 newRenderState RenderCore {..} = do
     let Environment {..} = renderCoreEnvironment
+        renderStateAllocatedVertices = 1024
+        renderStateAllocatedIndices = 1024
+        renderStateAllocatedUniforms = 128
 
-    renderStateVertex <- newTypedBufferN renderCoreEnvironment
-        Vk.BUFFER_USAGE_VERTEX_BUFFER_BIT 4096
+    renderStateVertex <- newTypedBufferN
+        renderCoreEnvironment
+        Vk.BUFFER_USAGE_VERTEX_BUFFER_BIT
+        renderStateAllocatedVertices
 
-    renderStateIndex <- newTypedBufferN renderCoreEnvironment
-        Vk.BUFFER_USAGE_INDEX_BUFFER_BIT 4096
+    renderStateIndex <- newTypedBufferN
+        renderCoreEnvironment
+        Vk.BUFFER_USAGE_INDEX_BUFFER_BIT
+        renderStateAllocatedIndices
 
     descriptorSets <- Vk.allocateDescriptorSets
         environmentDevice
@@ -161,9 +171,20 @@ newRenderState RenderCore {..} = do
                 [a, b] -> (a, b)
                 _ -> error "newRenderState: Incorrect number of state descriptor sets returned!"
 
-    renderStateScreenUniform <- newTypedBufferN renderCoreEnvironment Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 1
-    renderStatePatternUniform <- newTypedBufferSized renderCoreEnvironment Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 1024
-    renderStateTransformUniform <- newTypedBufferSized renderCoreEnvironment Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT 1024
+    renderStateScreenUniform <- newTypedBufferN
+        renderCoreEnvironment
+        Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT
+        1
+
+    renderStatePatternUniform <- newTypedBufferSized
+        renderCoreEnvironment
+        Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT
+        (fromIntegral renderCoreMinUniformBufferOffsetAlign * renderStateAllocatedUniforms)
+
+    renderStateTransformUniform <- newTypedBufferSized
+        renderCoreEnvironment
+        Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT
+        (fromIntegral renderCoreMinUniformBufferOffsetAlign * renderStateAllocatedUniforms)
 
     Vk.updateDescriptorSets
         environmentDevice
@@ -192,7 +213,7 @@ newRenderState RenderCore {..} = do
                 Vk.bufferInfo = V.singleton Vk.DescriptorBufferInfo {
                     Vk.buffer = typedBufferObject renderStatePatternUniform,
                     Vk.offset = 0,
-                    Vk.range = 64
+                    Vk.range = renderCoreMinUniformBufferOffsetAlign
                 }
             },
             Vk.SomeStruct Vk.zero {
@@ -205,7 +226,7 @@ newRenderState RenderCore {..} = do
                 Vk.bufferInfo = V.singleton Vk.DescriptorBufferInfo {
                     Vk.buffer = typedBufferObject renderStateTransformUniform,
                     Vk.offset = 0,
-                    Vk.range = 64
+                    Vk.range = renderCoreMinUniformBufferOffsetAlign
                 }
             }
         ])
