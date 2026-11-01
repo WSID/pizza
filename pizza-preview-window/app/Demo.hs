@@ -118,6 +118,7 @@ makeWaveImage renderCore width height = do
     cmdpool <- Vk.createCommandPool
         (Pz.environmentDevice environment)
         Vk.CommandPoolCreateInfo {
+            Vk.next = (),
             Vk.flags = Vk.COMMAND_POOL_CREATE_TRANSIENT_BIT,
             Vk.queueFamilyIndex = Pz.environmentGraphicsQFI environment
         }

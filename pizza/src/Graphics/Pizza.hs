@@ -59,6 +59,7 @@ renderToListOf (V2 width height) graphics px = do
     cmdpool <- Vk.createCommandPool
         environmentDevice
         Vk.CommandPoolCreateInfo {
+            Vk.next = (),
             Vk.flags = Vk.COMMAND_POOL_CREATE_TRANSIENT_BIT,
             Vk.queueFamilyIndex = environmentGraphicsQFI
         }

@@ -174,6 +174,7 @@ main = do
     cmdpool <- Vk.createCommandPool
         (Pz.environmentDevice environment)
         Vk.CommandPoolCreateInfo {
+            Vk.next = (),
             Vk.flags =
                 Vk.COMMAND_POOL_CREATE_TRANSIENT_BIT .|.
                 Vk.COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
