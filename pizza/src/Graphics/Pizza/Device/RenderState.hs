@@ -269,9 +269,10 @@ setRenderStateTargetBase cmdbuf RenderCore {..} Renderer {..} RenderState {..} g
                 RenderStateCount {
                     renderStateCountVertex = vi,
                     renderStateCountIndex = ii,
-                    renderStateCountUniform = uoff,
+                    renderStateCountUniform = ui,
                     renderStateCountImage = iindex
                 } = count
+                uoff = ui * patOffset
 
             (nvi, nii) <- foldlM appendPath (vi, ii) (transform trans <$> paths)
 
@@ -336,7 +337,7 @@ setRenderStateTargetBase cmdbuf RenderCore {..} Renderer {..} RenderState {..} g
             pure RenderStateCount {
                 renderStateCountVertex = nvi,
                 renderStateCountIndex = nii,
-                renderStateCountUniform = uoff + patOffset,
+                renderStateCountUniform = ui + 1,
                 renderStateCountImage = niindex
             }
 
