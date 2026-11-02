@@ -156,8 +156,8 @@ main = do
     let renderTarget = case mayRenderTarget of
             Just swapchain -> swapchain
             Nothing -> error "Cannot find format."
-    renderState <- Pz.newRenderState renderCore
-    
+    initRenderState <- Pz.newRenderState renderCore
+
     imageSem <- Vk.createSemaphore (Pz.environmentDevice environment) Vk.zero Nothing
     renderFence <- Vk.createFence (Pz.environmentDevice environment) Vk.zero Nothing
 
@@ -213,18 +213,16 @@ main = do
                 demoTimeStart <- getCurrentTime
                 writeIORef demoRef (nextDemoIndex, demoTimeStart)
 
-
-    let loop recur timePrevFrame = do
+    let loop renderState timePrevFrame = do
             timeFrameStart <- getCurrentTime
             (demoIndex, demoTimeStart) <- readIORef demoRef
             let timeDiff = realToFrac $ diffUTCTime timeFrameStart demoTimeStart
             let graphics = demoGraphic (demos !! demoIndex) timeDiff
-            
+
             Vk.resetFences
                 (Pz.environmentDevice environment)
                 (V.singleton renderFence)
 
-            
             (index, baseRenderTarget, renderSem) <- Pz.surfaceRenderTargetAcquireNext
                 renderCore
                 renderTarget
@@ -247,11 +245,69 @@ main = do
                     400
                     baseRenderTarget
 
-            let vertexCountStr = "(v: " ++ show (Pz.renderStateCountVertex count) ++ ")"
-            let indexCountStr = "(i: " ++ show (Pz.renderStateCountIndex count) ++ ")"
-            let uniformCountStr = "(u: " ++ show (Pz.renderStateCountUniform count) ++ ")"
+            let alloc = Pz.renderStateAllocateCount renderState
+
+            let vertCount = Pz.renderStateCountVertex count
+                vertAlloc = Pz.renderStateAllocateVertices alloc
+                idxCount = Pz.renderStateCountIndex count
+                idxAlloc = Pz.renderStateAllocateIndices alloc
+                uniformCount = Pz.renderStateCountUniform count
+                uniformAlloc = Pz.renderStateAllocateUniforms alloc
+
+            let newVert = iterate (* 2) vertAlloc &
+                    dropWhile (< vertCount * 2) &
+                    head
+
+                newIdx = iterate (* 2) idxAlloc &
+                    dropWhile (< idxCount * 2) &
+                    head
+
+                newUniform = iterate (* 2) uniformAlloc &
+                    dropWhile (< uniformCount * 2) &
+                    head
+
+                reallocVert = vertAlloc < newVert
+                reallocIdx = idxAlloc < newIdx
+                reallocUni = uniformAlloc < newUniform
+
+            rs1 <- if reallocVert then Pz.reallocateRenderStateVertices renderCore renderState newVert else pure renderState
+            rs2 <- if reallocIdx then Pz.reallocateRenderStateIndices renderCore rs1 newIdx else pure rs1
+            rs3 <- if reallocUni then Pz.reallocateRenderStateUniforms renderCore rs2 newUniform else pure rs2
+
+            when (reallocVert || reallocIdx || reallocUni) $ do
+                void $ do
+                    Vk.useCommandBuffer
+                        cmdbuf
+                        Vk.CommandBufferBeginInfo {
+                            Vk.next = (),
+                            Vk.flags = Vk.COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+                            Vk.inheritanceInfo = Nothing
+                        } $ do
+                            Pz.setRenderStateTargetBase
+                                cmdbuf
+                                renderCore
+                                renderer
+                                rs3
+                                graphics
+                                400
+                                400
+                                baseRenderTarget
+
+            let alloc2 = Pz.renderStateAllocateCount rs3
+
+            let vertAlloc2 = Pz.renderStateAllocateVertices alloc2
+                idxAlloc2 = Pz.renderStateAllocateIndices alloc2
+                uniformAlloc2 = Pz.renderStateAllocateUniforms alloc2
+
+
+            let vertexCountStr = "(v: " ++ show vertCount ++ " / " ++ show vertAlloc2 ++ ")"
+            let indexCountStr = "(i: " ++ show idxCount ++ " / " ++ show idxAlloc2 ++ ")"
+
+            let uniformCountStr = "(u: " ++ show uniformCount ++ " / " ++ show uniformAlloc2 ++ ")"
+
             let imageCountStr = "(img: " ++ show (Pz.renderStateCountImage count) ++ ")"
             putStrLn $ "COUNT: " ++ vertexCountStr ++ " " ++ indexCountStr ++ " " ++ uniformCountStr ++ " " ++ imageCountStr
+
 
             Vk.queueSubmit
                 (Pz.environmentGraphicsQueue environment)
@@ -262,14 +318,14 @@ main = do
                     Vk.signalSemaphores = V.singleton renderSem
                 } )
                 renderFence
-                
+
             Pz.surfaceRenderTargetPresent
                 renderCore
                 renderTarget
                 index
-                
+
             timeFrameDone <- getCurrentTime
-            
+
             _ <- Vk.waitForFences
                 (Pz.environmentDevice environment)
                 (V.singleton renderFence)
@@ -281,17 +337,21 @@ main = do
 
             putStrLn $ "FRAME: " ++ showFFloat (Just 5) frameInterval "" ++ " / Freq: " ++ show (recip frameInterval)
             putStrLn $ "RENDER: " ++ showFFloat (Just 5) renderInterval "" ++ " / Freq: " ++ show (recip renderInterval)
+            putStrLn "\x1B[J\x1B[4A"
 
-            a <- readIORef keepAlive
-            when a (GLFW.pollEvents >> recur timeFrameStart)
-    fix loop timeStart
+            alive <- readIORef keepAlive
+            if alive
+                then GLFW.pollEvents >> loop rs3 timeFrameStart
+                else pure rs3
+
+    renderState <- loop initRenderState timeStart
 
     Vk.deviceWaitIdle (Pz.environmentDevice environment)
 
     Vk.destroyCommandPool (Pz.environmentDevice environment) cmdpool Nothing
 
     for_ demos demoFree
-    
+
     Vk.destroySemaphore (Pz.environmentDevice environment) imageSem Nothing
     Vk.destroyFence (Pz.environmentDevice environment) renderFence Nothing
 

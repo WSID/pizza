@@ -4,6 +4,7 @@
 
 module Graphics.Pizza.Device.RenderState where
 
+import Control.Monad
 import Control.Monad.IO.Class
 
 import Data.Bits
@@ -122,9 +123,13 @@ data RenderState = RenderState {
     renderStateScreenUniform :: TypedBuffer (V2 Float),
     renderStatePatternUniform :: TypedBuffer (),
     renderStateTransformUniform :: TypedBuffer (), -- for Transform
-    renderStateAllocatedVertices :: Int,
-    renderStateAllocatedIndices :: Int,
-    renderStateAllocatedUniforms :: Int
+    renderStateAllocateCount :: RenderStateAllocateCount
+}
+
+data RenderStateAllocateCount = RenderStateAllocateCount {
+    renderStateAllocateVertices :: Int,
+    renderStateAllocateIndices :: Int,
+    renderStateAllocateUniforms :: Int
 }
 
 -- | Count for render state set up.
@@ -135,22 +140,27 @@ data RenderStateCount = RenderStateCount {
     renderStateCountImage :: Int
 }
 
+renderStateDefaultAllocate :: RenderStateAllocateCount
+renderStateDefaultAllocate = RenderStateAllocateCount {
+    renderStateAllocateVertices = 128,
+    renderStateAllocateIndices = 128,
+    renderStateAllocateUniforms = 8
+}
+
 newRenderState :: (MonadIO m) => RenderCore -> m RenderState
 newRenderState RenderCore {..} = do
     let Environment {..} = renderCoreEnvironment
-        renderStateAllocatedVertices = 1024
-        renderStateAllocatedIndices = 1024
-        renderStateAllocatedUniforms = 128
+        renderStateAllocateCount = renderStateDefaultAllocate
 
     renderStateVertex <- newTypedBufferN
         renderCoreEnvironment
         Vk.BUFFER_USAGE_VERTEX_BUFFER_BIT
-        renderStateAllocatedVertices
+        (renderStateAllocateVertices renderStateAllocateCount)
 
     renderStateIndex <- newTypedBufferN
         renderCoreEnvironment
         Vk.BUFFER_USAGE_INDEX_BUFFER_BIT
-        renderStateAllocatedIndices
+        (renderStateAllocateIndices renderStateAllocateCount)
 
     descriptorSets <- Vk.allocateDescriptorSets
         environmentDevice
@@ -179,12 +189,16 @@ newRenderState RenderCore {..} = do
     renderStatePatternUniform <- newTypedBufferSized
         renderCoreEnvironment
         Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT
-        (fromIntegral renderCoreMinUniformBufferOffsetAlign * renderStateAllocatedUniforms)
+        (fromIntegral renderCoreMinUniformBufferOffsetAlign *
+            renderStateAllocateUniforms renderStateAllocateCount
+        )
 
     renderStateTransformUniform <- newTypedBufferSized
         renderCoreEnvironment
         Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT
-        (fromIntegral renderCoreMinUniformBufferOffsetAlign * renderStateAllocatedUniforms)
+        (fromIntegral renderCoreMinUniformBufferOffsetAlign *
+            renderStateAllocateUniforms renderStateAllocateCount
+        )
 
     Vk.updateDescriptorSets
         environmentDevice
@@ -247,9 +261,103 @@ freeRenderState RenderCore {..} RenderState {..} = do
     freeTypedBuffer renderCoreEnvironment renderStateVertex
 
 
+reallocateRenderStateVertices :: (MonadIO m) => RenderCore -> RenderState -> Int -> m RenderState
+reallocateRenderStateVertices RenderCore {..} RenderState {..} n = do
+    freeTypedBuffer renderCoreEnvironment renderStateVertex
+
+    newBuffer <- newTypedBufferN
+        renderCoreEnvironment
+        Vk.BUFFER_USAGE_VERTEX_BUFFER_BIT
+        n
+
+    pure RenderState {
+        renderStateVertex = newBuffer,
+        renderStateAllocateCount = renderStateAllocateCount {
+            renderStateAllocateVertices = n
+        },
+        ..
+    }
+
+reallocateRenderStateIndices :: (MonadIO m) => RenderCore -> RenderState -> Int -> m RenderState
+reallocateRenderStateIndices RenderCore {..} RenderState {..} n = do
+    freeTypedBuffer renderCoreEnvironment renderStateIndex
+
+    newBuffer <- newTypedBufferN
+        renderCoreEnvironment
+        Vk.BUFFER_USAGE_INDEX_BUFFER_BIT
+        n
+
+    pure RenderState {
+        renderStateIndex = newBuffer,
+        renderStateAllocateCount = renderStateAllocateCount {
+            renderStateAllocateIndices = n
+        },
+        ..
+    }
+
+
+reallocateRenderStateUniforms :: (MonadIO m) => RenderCore -> RenderState -> Int -> m RenderState
+reallocateRenderStateUniforms RenderCore {..} RenderState {..} n = do
+    freeTypedBuffer renderCoreEnvironment renderStatePatternUniform
+    freeTypedBuffer renderCoreEnvironment renderStateTransformUniform
+
+    newPatternUniform <- newTypedBufferSized
+        renderCoreEnvironment
+        Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT
+        (fromIntegral renderCoreMinUniformBufferOffsetAlign * n)
+
+    newTransformUniform <- newTypedBufferSized
+        renderCoreEnvironment
+        Vk.BUFFER_USAGE_UNIFORM_BUFFER_BIT
+        (fromIntegral renderCoreMinUniformBufferOffsetAlign * n)
+
+    Vk.updateDescriptorSets
+        (environmentDevice renderCoreEnvironment)
+        -- writes
+        (V.fromList [
+            Vk.SomeStruct Vk.zero {
+                Vk.next = (),
+                Vk.dstSet = renderStatePatternDS,
+                Vk.dstBinding = 0,
+                Vk.dstArrayElement = 0,
+                Vk.descriptorCount = 1,
+                Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+                Vk.bufferInfo = V.singleton Vk.DescriptorBufferInfo {
+                    Vk.buffer = typedBufferObject newPatternUniform,
+                    Vk.offset = 0,
+                    Vk.range = renderCoreMinUniformBufferOffsetAlign
+                }
+            },
+            Vk.SomeStruct Vk.zero {
+                Vk.next = (),
+                Vk.dstSet = renderStatePatternDS,
+                Vk.dstBinding = 1,
+                Vk.dstArrayElement = 0,
+                Vk.descriptorCount = 1,
+                Vk.descriptorType = Vk.DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+                Vk.bufferInfo = V.singleton Vk.DescriptorBufferInfo {
+                    Vk.buffer = typedBufferObject newTransformUniform,
+                    Vk.offset = 0,
+                    Vk.range = renderCoreMinUniformBufferOffsetAlign
+                }
+            }
+        ])
+        -- copies
+        V.empty
+
+    pure RenderState {
+        renderStatePatternUniform = newPatternUniform,
+        renderStateTransformUniform = newTransformUniform,
+        renderStateAllocateCount = renderStateAllocateCount {
+            renderStateAllocateUniforms = n
+        },
+        ..
+    }
+
 setRenderStateTargetBase :: (MonadIO m) => Vk.CommandBuffer -> RenderCore -> Renderer px -> RenderState -> Graphics -> Int -> Int -> BaseRenderTarget px -> m RenderStateCount
 setRenderStateTargetBase cmdbuf RenderCore {..} Renderer {..} RenderState {..} graphics width height BaseRenderTarget {..} = do
     let Environment {..} = renderCoreEnvironment
+        RenderStateAllocateCount {..} = renderStateAllocateCount
     let renderArea = Vk.Rect2D {
             Vk.offset = Vk.Offset2D 0 0,
             Vk.extent = Vk.Extent2D (fromIntegral width) (fromIntegral height)
@@ -275,8 +383,11 @@ setRenderStateTargetBase cmdbuf RenderCore {..} Renderer {..} RenderState {..} g
                 pathVirange = [fromIntegral pathVi .. fromIntegral (pred pathViend)]
                 pathIndices = fanIndices pathVirange
 
-            pokeArray (advancePtr vptr pathVi) pathVertices
-            pokeArray (advancePtr iptr pathIi) pathIndices
+            -- Vertex is out ouf bound, then don't write them at all.
+            when (pathViend < renderStateAllocateVertices) $ do
+                pokeArray (advancePtr vptr pathVi) pathVertices
+                pokeArray (advancePtr iptr pathIi) pathIndices
+
             pure (pathViend, pathIi + pathVcount - 2)
 
     let appendDrawItem :: RenderStateCount -> DrawItem -> IO RenderStateCount
@@ -293,63 +404,69 @@ setRenderStateTargetBase cmdbuf RenderCore {..} Renderer {..} RenderState {..} g
                     renderStateCountUniform = ui,
                     renderStateCountImage = iindex
                 } = count
-                uoff = ui * patOffset
 
             (nvi, nii) <- foldlM appendPath (vi, ii) (transform trans <$> paths)
 
-            recordRenderStateStencilCmd
-                cmdbuf
-                Renderer {..}
-                RenderState {..}
-                renderArea
-                (fromIntegral ii)
-                (fromIntegral (nii - ii))
+            -- If vertex is out ouf bound, then don't write them at all.
+            let vertexInbound = nvi < renderStateAllocateVertices
+                uniformInbound = ui < renderStateAllocateUniforms
 
-            case applyOpacity opacity pattern of
-                PatternSolid color -> pokeByteOff uptr uoff color
-                PatternLinear ps pe cs ce -> pokeByteOff uptr uoff (PreparationLinear ps pe cs ce)
-                PatternRadial ps r cs ce -> pokeByteOff uptr uoff (PreparationRadial ps r cs ce)
+            when (vertexInbound && uniformInbound) $ do
+                let uoff = ui * patOffset
 
-                PatternImage image itrans iopacity -> do
-                    Vk.updateDescriptorSets
-                        environmentDevice
-                        ( V.singleton $
-                          Vk.SomeStruct $
-                          Vk.WriteDescriptorSet {
-                            Vk.next = (),
-                            Vk.dstSet = renderStateImageDSs ! iindex,
-                            Vk.dstBinding = 0,
-                            Vk.dstArrayElement = 0,
-                            Vk.descriptorCount = 1,
-                            Vk.descriptorType = Vk.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                            Vk.bufferInfo = V.empty,
-                            Vk.imageInfo = V.singleton Vk.DescriptorImageInfo {
-                                Vk.sampler = imageSampler image,
-                                Vk.imageView = imageView image,
-                                Vk.imageLayout = Vk.IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                            },
-                            Vk.texelBufferView = V.empty
-                          }
-                        )
-                        V.empty
+                recordRenderStateStencilCmd
+                    cmdbuf
+                    Renderer {..}
+                    RenderState {..}
+                    renderArea
+                    (fromIntegral ii)
+                    (fromIntegral (nii - ii))
 
-                    pokeByteOff uptr uoff (PreparationImage itrans iopacity)
+                case applyOpacity opacity pattern of
+                    PatternSolid color -> pokeByteOff uptr uoff color
+                    PatternLinear ps pe cs ce -> pokeByteOff uptr uoff (PreparationLinear ps pe cs ce)
+                    PatternRadial ps r cs ce -> pokeByteOff uptr uoff (PreparationRadial ps r cs ce)
 
-            let Transform (V2 transMx transMy) transT = trans
+                    PatternImage image itrans iopacity -> do
+                        Vk.updateDescriptorSets
+                            environmentDevice
+                            ( V.singleton $
+                              Vk.SomeStruct $
+                              Vk.WriteDescriptorSet {
+                                Vk.next = (),
+                                Vk.dstSet = renderStateImageDSs ! iindex,
+                                Vk.dstBinding = 0,
+                                Vk.dstArrayElement = 0,
+                                Vk.descriptorCount = 1,
+                                Vk.descriptorType = Vk.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                                Vk.bufferInfo = V.empty,
+                                Vk.imageInfo = V.singleton Vk.DescriptorImageInfo {
+                                    Vk.sampler = imageSampler image,
+                                    Vk.imageView = imageView image,
+                                    Vk.imageLayout = Vk.IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                                },
+                                Vk.texelBufferView = V.empty
+                              }
+                            )
+                            V.empty
 
-            pokeByteOff tptr uoff transMx
-            pokeByteOff tptr (uoff + 16) transMy
-            pokeByteOff tptr (uoff + 32) transT
+                        pokeByteOff uptr uoff (PreparationImage itrans iopacity)
 
-            recordRenderStateColorCmd
-                cmdbuf
-                RenderCore {..}
-                Renderer {..}
-                RenderState {..}
-                pattern
-                blend
-                (fromIntegral uoff)
-                iindex
+                let Transform (V2 transMx transMy) transT = trans
+
+                pokeByteOff tptr uoff transMx
+                pokeByteOff tptr (uoff + 16) transMy
+                pokeByteOff tptr (uoff + 32) transT
+
+                recordRenderStateColorCmd
+                    cmdbuf
+                    RenderCore {..}
+                    Renderer {..}
+                    RenderState {..}
+                    pattern
+                    blend
+                    (fromIntegral uoff)
+                    iindex
 
             let niindex = case pattern of
                     PatternImage {} -> iindex + 1
